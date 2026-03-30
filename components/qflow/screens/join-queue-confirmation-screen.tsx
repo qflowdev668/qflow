@@ -3,7 +3,7 @@
 import { useApp, Location } from "@/lib/app-context"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
-import { MapPin, Clock, Users, CheckCircle2 } from "lucide-react"
+import { MapPin, Clock, Users, CheckCircle2, Bell } from "lucide-react"
 
 export function JoinQueueConfirmationScreen() {
   const { joinQueue, navigateTo } = useApp()
@@ -23,8 +23,9 @@ export function JoinQueueConfirmationScreen() {
     description: "Public health clinic offering general healthcare services."
   }
 
-  const position = location.queueCount + 1
-  const estimatedWait = location.waitTime + 5
+  // Assigned position #13, estimated wait 30 min as specified
+  const position = 13
+  const estimatedWait = 30
 
   const handleConfirm = () => {
     joinQueue(location)
@@ -37,7 +38,7 @@ export function JoinQueueConfirmationScreen() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <TopBar 
-        title="Confirm Queue" 
+        title="Join Queue" 
         showBack 
         backTo="location-detail"
       />
@@ -54,72 +55,70 @@ export function JoinQueueConfirmationScreen() {
           </div>
         </div>
 
-        {/* Queue Summary Card */}
+        {/* Position Assignment Card */}
         <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden mb-6">
-          <div className="bg-primary/5 px-4 py-3 border-b border-border">
-            <h3 className="font-semibold text-foreground">Queue Summary</h3>
+          <div className="bg-primary text-primary-foreground px-4 py-4 text-center">
+            <p className="text-sm opacity-90 mb-1">Your Assigned Position</p>
+            <p className="text-5xl font-bold">#{position}</p>
           </div>
           
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="p-5 space-y-4">
+            {/* Estimated Wait */}
+            <div className="flex items-center justify-between py-3 border-b border-border">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                  <Users className="w-5 h-5 text-primary" />
-                </div>
-                <span className="text-muted-foreground">Your position</span>
-              </div>
-              <span className="text-2xl font-bold text-primary">#{position}</span>
-            </div>
-
-            <div className="h-px bg-border" />
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-secondary/10 rounded-full flex items-center justify-center">
+                <div className="w-11 h-11 bg-secondary/10 rounded-full flex items-center justify-center">
                   <Clock className="w-5 h-5 text-secondary" />
                 </div>
-                <span className="text-muted-foreground">Estimated wait</span>
+                <span className="text-muted-foreground">Estimated Wait</span>
               </div>
-              <span className="text-lg font-semibold text-foreground">~{estimatedWait} minutes</span>
+              <span className="text-xl font-bold text-foreground">{estimatedWait} min</span>
             </div>
 
-            <div className="h-px bg-border" />
-
-            <div className="flex items-center justify-between">
+            {/* People Ahead */}
+            <div className="flex items-center justify-between py-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center">
-                  <MapPin className="w-5 h-5 text-muted-foreground" />
+                <div className="w-11 h-11 bg-primary/10 rounded-full flex items-center justify-center">
+                  <Users className="w-5 h-5 text-primary" />
                 </div>
-                <span className="text-muted-foreground">Location</span>
+                <span className="text-muted-foreground">People Ahead</span>
               </div>
-              <span className="text-sm font-medium text-foreground text-right max-w-[150px]">{location.address}</span>
+              <span className="text-xl font-bold text-foreground">{position - 1}</span>
             </div>
           </div>
         </div>
 
-        {/* Info Note */}
-        <div className="bg-primary/5 rounded-xl p-4 flex gap-3 mb-6">
-          <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {"You'll receive real-time updates as the queue moves. We'll notify you when it's almost your turn so you can arrive on time."}
-          </p>
+        {/* Info Notes */}
+        <div className="space-y-3 mb-6">
+          <div className="bg-primary/5 rounded-xl p-4 flex gap-3">
+            <Bell className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {"We'll send you notifications as the queue moves and alert you when it's almost your turn."}
+            </p>
+          </div>
+          <div className="bg-success/5 rounded-xl p-4 flex gap-3">
+            <CheckCircle2 className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              You can leave the queue at any time from the My Queue screen.
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Actions - Confirm & Join and Cancel buttons */}
       <div className="p-4 pb-8 space-y-3 border-t border-border bg-card">
         <Button 
           onClick={handleConfirm}
-          className="w-full h-14 text-base font-semibold"
+          className="w-full h-14 text-base font-semibold rounded-xl shadow-lg shadow-primary/25"
         >
-          Confirm & Join Queue
+          Confirm & Join
         </Button>
-        <button 
+        <Button 
+          variant="outline"
           onClick={handleCancel}
-          className="w-full text-center text-muted-foreground hover:text-foreground transition-colors py-2"
+          className="w-full h-12 text-base rounded-xl"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   )
