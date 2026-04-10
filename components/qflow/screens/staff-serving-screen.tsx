@@ -1,14 +1,20 @@
 "use client"
 
 import { useApp } from "@/lib/app-context"
-import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, XCircle, Clock, User } from "lucide-react"
+import { CheckCircle2, XCircle, Clock, User, AlertTriangle } from "lucide-react"
 import { useState, useEffect } from "react"
 
 export function StaffServingScreen() {
   const { currentlyServing, completeService, skipNoShow, navigateTo } = useApp()
   const [elapsedTime, setElapsedTime] = useState(0)
+
+  // Mock walk-in customer state (in real app, this would come from context/backend)
+  const isWalkInCustomer = true
+  const walkInCustomerInfo = {
+    name: "Thabo M.",
+    specialNeeds: "Elderly"
+  }
 
   // Timer for elapsed time
   useEffect(() => {
@@ -59,6 +65,25 @@ export function StaffServingScreen() {
             <span className="font-mono font-semibold text-foreground text-lg">{formatTime(elapsedTime)}</span>
           </div>
         </div>
+
+        {/* Walk-in Customer Notice */}
+        {isWalkInCustomer && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-amber-800 mb-2">Walk-in Customer</p>
+                <div className="space-y-1 text-sm text-amber-700">
+                  <p><span className="text-amber-600">Name:</span> {walkInCustomerInfo.name}</p>
+                  <p><span className="text-amber-600">Special needs:</span> {walkInCustomerInfo.specialNeeds}</p>
+                </div>
+                <p className="text-sm text-amber-700 mt-3 leading-relaxed">
+                  Please call this customer by name or announce {ticketNumber} at the counter — they have no app notifications.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Next in Queue Preview Card */}
         <div className="bg-muted/50 rounded-xl border border-border p-4">
