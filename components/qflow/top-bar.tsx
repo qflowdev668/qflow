@@ -8,6 +8,7 @@ interface TopBarProps {
   title?: string
   showBack?: boolean
   backTo?: string
+  onBack?: () => void
   rightContent?: React.ReactNode
   className?: string
   variant?: "default" | "transparent"
@@ -17,6 +18,7 @@ export function TopBar({
   title, 
   showBack = false, 
   backTo,
+  onBack,
   rightContent, 
   className,
   variant = "default"
@@ -24,6 +26,10 @@ export function TopBar({
   const { navigateTo } = useApp()
 
   const handleBack = () => {
+    if (onBack) {
+      onBack()
+      return
+    }
     if (backTo) {
       navigateTo(backTo)
     }

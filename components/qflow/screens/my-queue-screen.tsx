@@ -1,58 +1,116 @@
 "use client"
 
+import { useState } from "react"
 import { useApp } from "@/lib/app-context"
+import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
+import { useOfflineStatus } from "@/components/qflow/offline-banner"
 import { Button } from "@/components/ui/button"
-import { MapPin, Clock, AlertCircle, Building2, Shield } from "lucide-react"
+import { AVG_SERVICE_MINUTES, ACTIVE_STAFF } from "@/lib/supabase/helpers"
+import { MapPin, Clock, AlertCircle, Building2, XCircle, WifiOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type PriorityCategory = 
-  | "police" | "paramedic" | "firefighter" | "traffic" | "military"
-  | "learner" | "pregnant" | "disability" | "elderly" | "infant" | "distress"
-  | null
-
-const emergencyCategories = ["police", "paramedic", "firefighter", "traffic", "military"]
-const fastTrackCategories = ["learner", "pregnant", "disability", "elderly", "infant", "distress"]
+const isToday = (date: Date) => {
+  const now = new Date()
+  return (
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear()
+  )
+}
 
 export function MyQueueScreen() {
-  const { activeQueue, leaveQueue, navigateTo } = useApp()
+  const { activeQueue, leaveQueue, navigateTo, accessibility, queueHistory, lastSyncedAt } = useApp()
+  const t = useT()
+  const isOffline = useOfflineStatus()
+  const [showOfflineTooltip, setShowOfflineTooltip] = useState(false)
+  const [simpleViewActive, setSimpleViewActive] = useState(false)
+  const [noShowDismissed, setNoShowDismissed] = useState(false)
 
-  // Get priority status from window (set during join)
-  const queuePriority = (window as unknown as { queuePriority?: PriorityCategory }).queuePriority || null
-  const isEmergency = queuePriority && emergencyCategories.includes(queuePriority)
-  const isFastTrack = queuePriority && fastTrackCategories.includes(queuePriority)
+  const isLargeText = accessibility.textSize === "large" || accessibility.textSize === "x-large"
 
-  // Use position 5 as specified, with 4 people ahead (or priority positions)
-  const queueData = activeQueue || {
-    locationId: "1",
-    locationName: "Hillbrow Clinic",
-    locationAddress: "123 Pretoria St, Hillbrow, Johannesburg",
-    position: isEmergency ? 1 : isFastTrack ? 2 : 5,
-    estimatedWait: isEmergency ? 0 : isFastTrack ? 5 : 20,
-    joinedAt: new Date(),
-    status: "waiting" as const,
-    totalInQueue: 12
+  const latestVisit = queueHistory[0]
+  const wasMarkedNoShow =
+    !!latestVisit && latestVisit.status === "no-show" && isToday(latestVisit.date)
+  const noShowsToday = queueHistory.filter(
+    (visit) => visit.status === "no-show" && isToday(visit.date)
+  ).length
+
+  // Show no-show notice if the user's last visit today ended as a no-show
+  if (!activeQueue && wasMarkedNoShow && !noShowDismissed) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col pb-20">
+        <header className="sticky top-0 z-40 bg-card border-b border-border px-4 py-4">
+                  <h1 className="text-xl font-bold text-foreground">{t.myQueue}</h1>
+        </header>
+
+        <div className="flex-1 px-4 py-6">
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <XCircle className="w-6 h-6 text-[#EF4444] flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-[#EF4444] mb-2">You Were Marked as No-Show</h2>
+                <div className="text-sm text-red-700 space-y-2">
+                  <p>
+                    Your turn was called at{" "}
+                    <strong>
+                      {latestVisit.date.toLocaleTimeString("en-ZA", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </strong>{" "}
+                    but you did not arrive in time.
+                  </p>
+                  <p>
+                    You have been removed from the queue at <strong>{latestVisit.locationName}</strong>.
+                  </p>
+                  {noShowsToday > 1 && (
+                    <p className="font-medium">No-shows today: {noShowsToday}</p>
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <Button onClick={() => setNoShowDismissed(true)} className="w-full h-12">
+                    Rejoin a Queue
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setNoShowDismissed(true)
+                      navigateTo("home")
+                    }}
+                    className="w-full h-12"
+                  >
+                    Find Other Location
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <BottomNav />
+      </div>
+    )
   }
-
-  const peopleAhead = queueData.position - 1
 
   if (!activeQueue) {
     return (
       <div className="min-h-screen bg-background flex flex-col pb-20">
         <header className="sticky top-0 z-40 bg-card border-b border-border px-4 py-4">
-          <h1 className="text-xl font-bold text-foreground">My Queue</h1>
+                  <h1 className="text-xl font-bold text-foreground">{t.myQueue}</h1>
         </header>
 
         <div className="flex-1 flex flex-col items-center justify-center px-8">
           <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
             <Clock className="w-12 h-12 text-muted-foreground" />
           </div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">No Active Queue</h2>
+          <h2 className="text-xl font-semibold text-foreground mb-2">{t.noActiveQueue}</h2>
           <p className="text-muted-foreground text-center mb-6">
-            {"You're not in any queue right now. Find a location and join to get started."}
+            {t.noActiveQueueHint}
           </p>
           <Button onClick={() => navigateTo("home")} className="px-8">
-            Find a Location
+            {t.findALocation}
           </Button>
         </div>
 
@@ -61,66 +119,48 @@ export function MyQueueScreen() {
     )
   }
 
-  // Calculate progress for circular indicator
-  const progress = ((queueData.totalInQueue - queueData.position + 1) / queueData.totalInQueue) * 100
+  const peopleAhead = activeQueue.position - 1
+  const estimatedWait = activeQueue.estimatedWait
+
+  // Circular progress: how far the user has moved up the queue they joined
+  const totalInQueue = Math.max(activeQueue.totalInQueue, activeQueue.position)
+  const progress = ((totalInQueue - activeQueue.position + 1) / totalInQueue) * 100
   const circumference = 2 * Math.PI * 70
   const strokeDashoffset = circumference - (progress / 100) * circumference
 
+  if (simpleViewActive) {
+    return (
+      <SimpleQueueView
+        position={activeQueue.position}
+        waitTime={estimatedWait}
+        locationName={activeQueue.locationName}
+        onLeave={leaveQueue}
+        onSwitchToNormal={() => setSimpleViewActive(false)}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background pb-20">
-      {/* Priority Status Banners */}
-      {isEmergency ? (
-        <div className="bg-[#EF4444] px-4 py-5 relative overflow-hidden">
-          <div className="absolute inset-0 border-4 border-white/30 animate-pulse" />
-          <div className="relative flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
-            <p className="text-white font-bold text-lg">EMERGENCY PRIORITY</p>
-          </div>
-          <p className="text-white/90 text-sm leading-relaxed">
-            You will be served immediately. Please proceed to the counter and show your badge or official ID.
-          </p>
-          <p className="text-white/80 text-sm mt-2">
-            <span className="font-medium">Location:</span> {queueData.locationName}
+      {/* Status Banner */}
+      <div className="bg-secondary/10 border-b border-secondary/20 px-4 py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-2.5 h-2.5 bg-secondary rounded-full animate-pulse" />
+          <p className="text-foreground font-semibold">
+            {t.youreInQueue} —{" "}
+            <span className="text-secondary">
+              {peopleAhead} {peopleAhead === 1 ? t.personAheadLabel : t.peopleAheadLabel}
+            </span>
           </p>
         </div>
-      ) : isFastTrack ? (
-        <div className="bg-[#F59E0B] px-4 py-5">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
-            <p className="text-white font-bold text-lg">PRIORITY FAST-TRACK</p>
-          </div>
-          <div className="text-white/90 space-y-1 text-sm">
-            <p><span className="font-medium">Position:</span> #{queueData.position} (Priority Queue)</p>
-            <p><span className="font-medium">Est. Wait:</span> ~{queueData.estimatedWait} min</p>
-          </div>
-          <p className="text-white/80 text-sm mt-2">
-            Show your uniform or ID on arrival
-          </p>
-        </div>
-      ) : (
-        /* Standard Amber Status Banner */
-        <div className="bg-secondary/10 border-b border-secondary/20 px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-2.5 h-2.5 bg-secondary rounded-full animate-pulse" />
-            <p className="text-foreground font-semibold">
-              {"You're in the queue"} — <span className="text-secondary">{peopleAhead} {peopleAhead === 1 ? "person" : "people"} ahead</span>
-            </p>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Main Content */}
       <div className="px-4 py-6">
         {/* Large Position Number with Circular Progress */}
         <div className="flex flex-col items-center mb-8">
-          {/* Circular Progress Indicator */}
           <div className="relative w-48 h-48 mb-4">
             <svg className="w-full h-full transform -rotate-90">
-              {/* Background circle */}
               <circle
                 cx="96"
                 cy="96"
@@ -130,7 +170,6 @@ export function MyQueueScreen() {
                 fill="none"
                 className="text-muted"
               />
-              {/* Progress circle */}
               <circle
                 cx="96"
                 cy="96"
@@ -139,47 +178,65 @@ export function MyQueueScreen() {
                 strokeWidth="8"
                 fill="none"
                 strokeLinecap="round"
-                className={cn(
-                  "transition-all duration-500",
-                  isEmergency ? "text-[#EF4444]" : isFastTrack ? "text-[#F59E0B]" : "text-primary"
-                )}
+                className="transition-all duration-500 text-primary"
                 style={{
                   strokeDasharray: circumference,
                   strokeDashoffset: strokeDashoffset
                 }}
               />
             </svg>
-            {/* Position number in center */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Position</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{t.position}</p>
               <p className={cn(
-                "text-6xl font-bold",
-                isEmergency ? "text-[#EF4444]" : isFastTrack ? "text-[#F59E0B]" : "text-foreground"
+                "font-bold text-foreground transition-all",
+                isLargeText ? "text-[96px]" : "text-6xl"
               )}>
-                #{queueData.position}
+                #{activeQueue.position}
               </p>
-              {(isEmergency || isFastTrack) && (
-                <span className={cn(
-                  "text-xs font-medium mt-1",
-                  isEmergency ? "text-[#EF4444]" : "text-[#F59E0B]"
-                )}>
-                  (Priority)
-                </span>
-              )}
             </div>
           </div>
 
-          {/* Estimated Wait */}
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Clock className="w-5 h-5" />
-            <span className="text-lg">
-              {isEmergency ? (
-                <strong className="text-[#EF4444]">Immediate service</strong>
-              ) : (
-                <>~<strong className="text-foreground">{queueData.estimatedWait} min</strong> estimated wait</>
-              )}
-            </span>
+          {/* Estimated Wait Card */}
+          <div className={cn(
+            "bg-card rounded-2xl border border-border shadow-sm p-4 w-full max-w-xs",
+            isLargeText && "p-6"
+          )}>
+            <p className={cn(
+              "text-muted-foreground uppercase tracking-wide mb-1",
+              isLargeText ? "text-sm" : "text-xs"
+            )}>
+                      {isLargeText ? t.waitLabel : t.estimatedWait}
+            </p>
+            <p className="text-5xl font-bold text-primary mb-1">~{estimatedWait} min</p>
+            <p className="text-xs text-muted-foreground italic">
+              {isOffline ? "(paused — you're offline)" : "(updating live)"}
+            </p>
+
+            <div className="mt-4 pt-3 border-t border-border">
+              <p className="text-xs text-muted-foreground mb-2">Based on:</p>
+              <ul className={cn("text-foreground space-y-1", isLargeText ? "text-lg" : "text-sm")}>
+                <li>• {peopleAhead} {isLargeText ? "AHEAD OF YOU" : "people ahead of you"}</li>
+                {!isLargeText && <li>• Avg service time: {AVG_SERVICE_MINUTES} min</li>}
+                {!isLargeText && <li>• {ACTIVE_STAFF} counters serving</li>}
+              </ul>
+            </div>
           </div>
+
+          {/* Offline Last Updated */}
+          {isOffline && (
+            <div className="mt-3 text-center">
+              {lastSyncedAt && (
+                <p className="text-sm text-muted-foreground italic">
+                  <Clock className="w-4 h-4 inline mr-1" />
+                  Last updated:{" "}
+                  {lastSyncedAt.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                (Updates paused — you&apos;re offline)
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Location Info Card */}
@@ -189,42 +246,122 @@ export function MyQueueScreen() {
               <Building2 className="w-6 h-6 text-primary" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-foreground mb-1">{queueData.locationName}</h3>
+              <h3 className="font-semibold text-foreground mb-1">{activeQueue.locationName}</h3>
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>{queueData.locationAddress}</span>
+                <span>{activeQueue.locationAddress}</span>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Offline Info Card */}
+        {isOffline && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <WifiOff className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-slate-700 leading-relaxed">
+                <span className="font-semibold">Offline Mode</span> — Showing your last known position. Your spot is held. Connect to get live updates.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Live Pulse Indicator */}
-        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-8">
-          <span className="relative flex h-3 w-3">
-            <span className={cn(
-              "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-              isEmergency ? "bg-[#EF4444]" : isFastTrack ? "bg-[#F59E0B]" : "bg-success"
-            )}></span>
-            <span className={cn(
-              "relative inline-flex rounded-full h-3 w-3",
-              isEmergency ? "bg-[#EF4444]" : isFastTrack ? "bg-[#F59E0B]" : "bg-success"
-            )}></span>
-          </span>
-          <span>Live updates active</span>
+        {!isOffline && (
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-8">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-success"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-success"></span>
+            </span>
+            <span>{t.liveUpdates}</span>
+          </div>
+        )}
+
+        {/* Red Outlined Leave Queue Button - Disabled when offline */}
+        <div className="relative">
+          <Button 
+            variant="outline"
+            onClick={isOffline ? () => setShowOfflineTooltip(true) : leaveQueue}
+            className={cn(
+              "w-full text-base font-semibold border-2 border-destructive text-destructive hover:bg-destructive hover:text-white rounded-xl",
+              isLargeText ? "h-16 text-lg" : "h-14",
+              isOffline && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-destructive"
+            )}
+          >
+            <AlertCircle className={cn("mr-2", isLargeText ? "w-6 h-6" : "w-5 h-5")} />
+            {t.leaveQueue}
+          </Button>
+          
+          {/* Offline Tooltip */}
+          {isOffline && showOfflineTooltip && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 bg-foreground text-background text-sm p-3 rounded-xl shadow-lg z-50">
+              <p>Cannot leave queue while offline. Reconnect to update your status.</p>
+              <button 
+                onClick={() => setShowOfflineTooltip(false)}
+                className="mt-2 text-xs text-background/70 underline"
+              >
+                Dismiss
+              </button>
+              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-foreground rotate-45" />
+            </div>
+          )}
         </div>
 
-        {/* Red Outlined Leave Queue Button */}
-        <Button 
-          variant="outline"
-          onClick={leaveQueue}
-          className="w-full h-14 text-base font-semibold border-2 border-destructive text-destructive hover:bg-destructive hover:text-white rounded-xl"
+        {/* Switch to Simple View Button */}
+        <button
+          onClick={() => setSimpleViewActive(true)}
+          className="w-full text-center text-sm text-gray-500 underline py-4"
         >
-          <AlertCircle className="w-5 h-5 mr-2" />
-          Leave Queue
-        </Button>
+          {t.switchToSimpleView}
+        </button>
       </div>
 
       <BottomNav />
+    </div>
+  )
+}
+
+// Simplified View Component - Part C
+function SimpleQueueView({ 
+  position, 
+  waitTime, 
+  locationName, 
+  onLeave, 
+  onSwitchToNormal 
+}: { 
+  position: number
+  waitTime: number
+  locationName: string
+  onLeave: () => void
+  onSwitchToNormal: () => void
+}) {
+  const t = useT()
+  return (
+    <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center px-6">
+      <div className="flex-1 flex flex-col items-center justify-center">
+        <p className="text-sm text-gray-500 tracking-widest uppercase mb-4">{t.yourNumber}</p>
+        <p className="text-[96px] font-bold text-black leading-none mb-6">#{position}</p>
+        <p className="text-2xl font-bold text-black mb-4">
+          {t.waitLabel}: {waitTime} {t.minutes}
+        </p>
+        <p className="text-base text-gray-600">{locationName}</p>
+      </div>
+
+      <div className="w-full pb-8">
+        <button
+          onClick={onLeave}
+          className="w-full h-16 bg-black text-white text-xl font-semibold rounded-2xl mb-6"
+        >
+          {t.leaveQueue.toUpperCase()}
+        </button>
+        <button
+          onClick={onSwitchToNormal}
+          className="w-full text-center text-sm text-gray-500 underline"
+        >
+          {t.switchToNormalView}
+        </button>
+      </div>
     </div>
   )
 }

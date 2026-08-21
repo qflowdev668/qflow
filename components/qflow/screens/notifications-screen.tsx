@@ -1,8 +1,9 @@
 "use client"
 
 import { useApp } from "@/lib/app-context"
+import { useT } from "@/hooks/use-t"
 import { TopBar } from "@/components/qflow/top-bar"
-import { Users, Bell, Star, Info, CheckCheck } from "lucide-react"
+import { Users, Bell, Star, Info, CheckCheck, BellOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const iconMap = {
@@ -20,7 +21,15 @@ const iconColors = {
 }
 
 export function NotificationsScreen() {
-  const { notifications, markNotificationRead, markAllNotificationsRead, navigateTo, currentUser } = useApp()
+  const {
+    notifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+    navigateTo,
+    currentUser,
+    refreshPendingRating,
+  } = useApp()
+  const t = useT()
 
   const formatTime = (date: Date) => {
     const now = new Date()
@@ -29,16 +38,25 @@ export function NotificationsScreen() {
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return "Just now"
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    return `${diffDays}d ago`
+    if (diffMins < 1) return t.justNow
+    if (diffMins < 60) return t.minutesAgo.replace("{count}", String(diffMins))
+    if (diffHours < 24) return t.hoursAgo.replace("{count}", String(diffHours))
+    return t.daysAgo.replace("{count}", String(diffDays))
   }
 
   const unreadCount = notifications.filter(n => !n.read).length
 
-  const handleNotificationClick = (id: string) => {
+  const handleNotificationClick = (id: string, icon: string) => {
     markNotificationRead(id)
+    if (icon === "feedback") {
+      void refreshPendingRating().finally(() => {
+        navigateTo("rate-experience")
+      })
+      return
+    }
+    if ((icon === "queue" || icon === "turn") && currentUser?.role === "user") {
+      navigateTo("my-queue")
+    }
   }
 
   const getBackTo = () => {
@@ -50,7 +68,7 @@ export function NotificationsScreen() {
   return (
     <div className="min-h-screen bg-background">
       <TopBar 
-        title="Notifications" 
+        title={t.notifications} 
         showBack 
         backTo={getBackTo()}
         rightContent={
@@ -60,7 +78,7 @@ export function NotificationsScreen() {
               className="flex items-center gap-1 text-sm text-primary font-medium"
             >
               <CheckCheck className="w-4 h-4" />
-              Mark all read
+              {t.markAllRead}
             </button>
           )
         }
@@ -70,13 +88,14 @@ export function NotificationsScreen() {
         {notifications.length > 0 ? (
           <div className="space-y-3">
             {notifications.map((notification) => {
-              const Icon = iconMap[notification.icon]
+              const Icon = iconMap[notification.icon] ?? Info
+              const colors = iconColors[notification.icon] ?? iconColors.info
               return (
                 <button
                   key={notification.id}
-                  onClick={() => handleNotificationClick(notification.id)}
+                  onClick={() => handleNotificationClick(notification.id, notification.icon)}
                   className={cn(
-                    "w-full flex items-start gap-4 p-4 rounded-xl border text-left transition-colors",
+                    "w-full flex items-start gap-4 p-4 rounded-xl border text-left transition-colors relative",
                     notification.read 
                       ? "bg-card border-border" 
                       : "bg-primary/5 border-primary/20"
@@ -84,7 +103,7 @@ export function NotificationsScreen() {
                 >
                   <div className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-                    iconColors[notification.icon]
+                    colors
                   )}>
                     <Icon className="w-5 h-5" />
                   </div>
@@ -109,11 +128,11 @@ export function NotificationsScreen() {
         ) : (
           <div className="flex flex-col items-center justify-center py-16">
             <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
-              <Bell className="w-10 h-10 text-muted-foreground" />
+              <BellOff className="w-12 h-12 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">No Notifications</h3>
-            <p className="text-muted-foreground text-center">
-              {"You're all caught up! Check back later for updates."}
+            <h3 className="text-lg font-semibold text-foreground mb-2">{t.noNotificationsYet}</h3>
+            <p className="text-muted-foreground text-center px-8">
+              {t.noNotificationsHint}
             </p>
           </div>
         )}

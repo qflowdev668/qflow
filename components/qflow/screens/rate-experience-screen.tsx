@@ -1,21 +1,53 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useApp } from "@/lib/app-context"
+import { useT } from "@/hooks/use-t"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
 import { Star, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function RateExperienceScreen() {
-  const { navigateTo } = useApp()
+  const {
+    navigateTo,
+    pendingVisitRating,
+    refreshPendingRating,
+    submitVisitRating,
+    skipVisitRating,
+    authError,
+    clearAuthError,
+  } = useApp()
+  const t = useT()
   const [rating, setRating] = useState(0)
   const [hoveredRating, setHoveredRating] = useState(0)
   const [comment, setComment] = useState("")
   const [submitted, setSubmitted] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isLookingUp, setIsLookingUp] = useState(!pendingVisitRating)
 
-  const handleSubmit = () => {
-    // In a real app, this would submit to the backend
+  useEffect(() => {
+    if (pendingVisitRating) {
+      setIsLookingUp(false)
+      return
+    }
+    let cancelled = false
+    setIsLookingUp(true)
+    void refreshPendingRating().finally(() => {
+      if (!cancelled) setIsLookingUp(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [pendingVisitRating, refreshPendingRating])
+
+  const handleSubmit = async () => {
+    if (rating === 0) return
+    clearAuthError()
+    setIsSaving(true)
+    const ok = await submitVisitRating(rating, comment)
+    setIsSaving(false)
+    if (!ok) return
     setSubmitted(true)
     setTimeout(() => {
       navigateTo("home")
@@ -23,8 +55,18 @@ export function RateExperienceScreen() {
   }
 
   const handleSkip = () => {
+    skipVisitRating()
     navigateTo("home")
   }
+
+  const ratingLabels = [
+    "",
+    t.ratingPoor,
+    t.ratingFair,
+    t.ratingGood,
+    t.ratingVeryGood,
+    t.ratingExcellent,
+  ]
 
   if (submitted) {
     return (
@@ -32,9 +74,9 @@ export function RateExperienceScreen() {
         <div className="w-24 h-24 bg-success/10 rounded-full flex items-center justify-center mb-6">
           <Star className="w-12 h-12 text-success fill-success" />
         </div>
-        <h2 className="text-2xl font-bold text-foreground mb-2">Thank You!</h2>
+        <h2 className="text-2xl font-bold text-foreground mb-2">{t.thankYou}</h2>
         <p className="text-muted-foreground text-center">
-          Your feedback helps us improve our service.
+          {t.feedbackHelpsImprove}
         </p>
       </div>
     )
@@ -43,26 +85,26 @@ export function RateExperienceScreen() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <TopBar 
-        title="Rate Your Experience" 
+        title={t.rateYourExperience} 
         showBack 
         backTo="home"
       />
 
       <div className="flex-1 px-4 py-8">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
             <Star className="w-10 h-10 text-primary" />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-2">
-            How was your experience?
+            {t.howWasExperience}
           </h2>
           <p className="text-muted-foreground">
-            Your feedback helps us serve you better
+            {pendingVisitRating
+              ? pendingVisitRating.locationName
+              : t.feedbackHelpsServe}
           </p>
         </div>
 
-        {/* Star Rating */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {[1, 2, 3, 4, 5].map((star) => (
             <button
@@ -84,24 +126,18 @@ export function RateExperienceScreen() {
           ))}
         </div>
 
-        {/* Rating Labels */}
         {rating > 0 && (
           <p className="text-center text-lg font-medium text-foreground mb-6">
-            {rating === 1 && "Poor"}
-            {rating === 2 && "Fair"}
-            {rating === 3 && "Good"}
-            {rating === 4 && "Very Good"}
-            {rating === 5 && "Excellent!"}
+            {ratingLabels[rating]}
           </p>
         )}
 
-        {/* Comment */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-foreground mb-2">
-            Additional Comments (Optional)
+            {t.additionalComments}
           </label>
           <textarea
-            placeholder="Tell us more about your experience..."
+            placeholder={t.tellUsMore}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             className="w-full min-h-[120px] px-4 py-3 bg-background border border-input rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-ring"
@@ -109,21 +145,24 @@ export function RateExperienceScreen() {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="p-4 pb-8 space-y-3 border-t border-border bg-card">
+        {authError && (
+          <p className="text-sm text-destructive text-center mb-4">{authError}</p>
+        )}
+
         <Button 
-          onClick={handleSubmit}
+          onClick={() => void handleSubmit()}
           className="w-full h-12 text-base font-semibold"
-          disabled={rating === 0}
+          disabled={rating === 0 || isSaving || isLookingUp}
         >
           <Send className="w-5 h-5 mr-2" />
-          Submit Feedback
+          {t.submitFeedback}
         </Button>
         <button 
           onClick={handleSkip}
           className="w-full text-center text-muted-foreground hover:text-foreground transition-colors py-2"
         >
-          Skip
+          {t.skip}
         </button>
       </div>
     </div>

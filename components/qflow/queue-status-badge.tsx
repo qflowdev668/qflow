@@ -21,6 +21,10 @@ const statusConfig = {
     label: "Your Turn",
     className: "bg-emerald-100 text-emerald-700 border-emerald-200"
   },
+  serving: {
+    label: "Being Served",
+    className: "bg-emerald-100 text-emerald-800 border-emerald-300"
+  },
   served: {
     label: "Served",
     className: "bg-gray-100 text-gray-700 border-gray-200"
@@ -36,7 +40,7 @@ export function QueueStatusBadge({ status, className }: QueueStatusBadgeProps) {
       config.className,
       className
     )}>
-      {status === "waiting" || status === "almost" ? (
+      {status === "waiting" || status === "almost" || status === "serving" ? (
         <span className="w-2 h-2 rounded-full bg-current mr-2 animate-pulse" />
       ) : null}
       {config.label}

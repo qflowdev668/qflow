@@ -11,6 +11,14 @@ next.user-config.*
 .env*.local
 
 # Common ignores
+.data/
 node_modules
+
 .next/
 .DS_Store
+tsconfig.tsbuildinfo
+
+
+# Supabase CLI cache
+supabase/.temp/
+

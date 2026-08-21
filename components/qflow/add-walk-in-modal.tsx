@@ -3,8 +3,11 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { X, Info, UserPlus, CheckCircle2, Ticket, Printer, Shield, Zap } from "lucide-react"
+import { X, Info, UserPlus, CheckCircle2, Ticket, Printer, Shield, Zap, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useApp } from "@/lib/app-context"
+import { estimateWait } from "@/lib/supabase/helpers"
+import { fmt, useT } from "@/hooks/use-t"
 
 type PrioritySelection = "emergency" | "fast-track" | "standard"
 type EmergencyCategory = "police" | "paramedic" | "firefighter" | "traffic" | "military" | null
@@ -23,7 +26,12 @@ interface WalkInCustomer {
 interface AddWalkInModalProps {
   isOpen: boolean
   onClose: () => void
-  onAddCustomer: (customer: { name: string; specialNeeds: { elderly: boolean; disability: boolean; priority: boolean } }, position: number) => void
+  onAddCustomer: (customer: {
+    name: string
+    priorityType: PrioritySelection
+    priorityCategory?: string
+    notes?: string
+  }) => void
 }
 
 const emergencyOptions = [
@@ -44,6 +52,8 @@ const fastTrackOptions = [
 ] as const
 
 export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModalProps) {
+  const { locationQueue, staffLocationName } = useApp()
+  const t = useT()
   const [step, setStep] = useState<"form" | "confirmation">("form")
   const [formData, setFormData] = useState<WalkInCustomer>({
     name: "",
@@ -54,7 +64,8 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
     fastTrackCategory: null,
     notes: ""
   })
-  const [assignedPosition, setAssignedPosition] = useState(14)
+  const [assignedPosition, setAssignedPosition] = useState(1)
+  const [estimatedWait, setEstimatedWait] = useState(0)
 
   const handleSelectEmergency = (id: EmergencyCategory) => {
     setFormData(prev => ({
@@ -85,19 +96,26 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
 
   const handleSubmit = () => {
     if (!formData.name.trim()) return
-    
-    // Generate position (mock - would come from backend)
-    const position = formData.priorityType === "emergency" ? 1 : formData.priorityType === "fast-track" ? 3 : 14
+
+    const everyoneWaiting = locationQueue
+    const emergenciesAhead = everyoneWaiting.filter((w) => w.priorityType === "emergency").length
+    const priorityAhead = everyoneWaiting.filter((w) => w.priorityType !== "standard").length
+    const position =
+      formData.priorityType === "emergency"
+        ? emergenciesAhead + 1
+        : formData.priorityType === "fast-track"
+        ? priorityAhead + 1
+        : everyoneWaiting.length + 1
     setAssignedPosition(position)
-    
-    // Convert to old format for compatibility
-    const specialNeeds = {
-      elderly: formData.fastTrackCategory === "elderly",
-      disability: formData.fastTrackCategory === "disability",
-      priority: formData.priorityType !== "standard"
-    }
-    
-    onAddCustomer({ name: formData.name, specialNeeds }, position)
+    setEstimatedWait(estimateWait(position - 1))
+
+    onAddCustomer({
+      name: formData.name,
+      priorityType: formData.priorityType,
+      priorityCategory:
+        formData.priorityType === "standard" ? undefined : getPriorityLabel(),
+      notes: formData.notes.trim() || undefined,
+    })
     setStep("confirmation")
   }
 
@@ -163,8 +181,8 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
               <div className="sticky top-0 bg-card px-4 pt-4 pb-3 border-b border-border">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h2 className="text-xl font-bold text-foreground">Add Walk-in Customer</h2>
-                    <p className="text-sm text-muted-foreground mt-1">For customers without a smartphone</p>
+                    <h2 className="text-xl font-bold text-foreground">{t.addWalkInCustomer}</h2>
+                    <p className="text-sm text-muted-foreground mt-1">{t.forCustomersWithoutPhone}</p>
                   </div>
                   <button 
                     onClick={handleClose}
@@ -181,48 +199,56 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                 <div className="flex gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
                   <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-amber-800">
-                    Customer will be added to the queue and given a position ticket to wait with
+                    {t.walkInQueueInfo}
                   </p>
                 </div>
 
                 {/* Customer Name */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
-                    Customer Name <span className="text-destructive">*</span>
+                    {t.customerNameRequired} <span className="text-destructive">*</span>
                   </label>
                   <Input
-                    placeholder="Full name or initials"
+                    placeholder={t.fullNamePlaceholder}
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                     className="h-12 rounded-xl"
                   />
                 </div>
 
-                {/* ID Number */}
+                {/* Reference Number - Part C */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
-                    ID / Reference Number
+                    {t.referenceNumberOptional}
                   </label>
                   <Input
-                    placeholder="ID number (optional)"
+                    placeholder={t.referenceNumberPlaceholder}
                     value={formData.idNumber}
                     onChange={(e) => setFormData(prev => ({ ...prev, idNumber: e.target.value }))}
                     className="h-12 rounded-xl"
                   />
+                  <p className="text-xs text-muted-foreground">{t.notStoredPermanently}</p>
                 </div>
 
-                {/* Cell Number */}
+                {/* Cell Number — SMS updates are not wired up yet */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Cell Number
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="walk-in-cell" className="text-sm font-medium text-muted-foreground">
+                      {t.cellNumber}
+                    </label>
+                    <span className="text-[11px] font-medium uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                      {t.comingSoon}
+                    </span>
+                  </div>
                   <Input
-                    placeholder="For SMS updates (optional)"
-                    value={formData.cellNumber}
-                    onChange={(e) => setFormData(prev => ({ ...prev, cellNumber: e.target.value }))}
+                    id="walk-in-cell"
+                    placeholder={t.smsUpdatesPlaceholder}
+                    value=""
+                    readOnly
+                    disabled
                     className="h-12 rounded-xl"
                   />
-                  <p className="text-xs text-muted-foreground">Leave blank if no phone</p>
+                  <p className="text-xs text-muted-foreground">{t.smsNotAvailableYet}</p>
                 </div>
 
                 {/* Priority Selection */}
@@ -232,7 +258,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                     <div className="flex items-center gap-2">
                       <Shield className="w-4 h-4 text-[#EF4444]" />
                       <label className="text-sm font-medium text-foreground">
-                        Emergency Priority
+                        {t.emergencyPriorityLabel}
                       </label>
                     </div>
                     <div className="space-y-2">
@@ -274,7 +300,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                     <div className="flex items-center gap-2">
                       <Zap className="w-4 h-4 text-[#F59E0B]" />
                       <label className="text-sm font-medium text-foreground">
-                        Fast-Track Priority
+                        {t.fastTrackPriorityLabel}
                       </label>
                     </div>
                     <div className="space-y-2">
@@ -337,7 +363,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                         <div className="w-3 h-3 rounded-full bg-primary" />
                       )}
                     </div>
-                    <span className="text-sm text-foreground">No priority (standard queue)</span>
+                    <span className="text-sm text-foreground">{t.noPriorityStandard}</span>
                   </label>
 
                   {/* Priority Info Banners */}
@@ -345,7 +371,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                     <div className="flex gap-3 p-3 bg-red-50 border border-red-200 rounded-xl">
                       <Shield className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-red-800">
-                        This customer will skip the queue entirely and be served immediately.
+                        {t.emergencySkipQueueInfo}
                       </p>
                     </div>
                   )}
@@ -354,7 +380,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                     <div className="flex gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
                       <Zap className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-amber-800">
-                        This customer will be moved ahead of standard queue members.
+                        {t.fastTrackMoveAheadInfo}
                       </p>
                     </div>
                   )}
@@ -363,15 +389,29 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                 {/* Notes */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
-                    Staff Notes
+                    {t.staffNotes}
                   </label>
                   <textarea
-                    placeholder="Any additional notes..."
+                    placeholder={t.notesPlaceholder}
                     value={formData.notes}
                     onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                     rows={3}
                     className="w-full px-4 py-3 rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                   />
+                </div>
+              </div>
+
+              {/* POPIA Data Notice - Part C */}
+              <div className="px-4 pb-4">
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                    <div className="flex items-start gap-2">
+                      <Lock className="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        <span className="font-medium">{t.dataNoticeTitle}</span> {t.dataNoticeText}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -387,13 +427,13 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                   )}
                 >
                   <UserPlus className="w-5 h-5 mr-2" />
-                  Add to Queue
+                  {t.addToQueue}
                 </Button>
                 <button 
                   onClick={handleClose}
                   className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
                 >
-                  Cancel
+                  {t.cancel}
                 </button>
               </div>
             </>
@@ -439,10 +479,10 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                       : "text-emerald-800"
                   )}>
                     {formData.priorityType === "emergency" 
-                      ? "Emergency priority customer added" 
+                      ? t.emergencyAddedSuccess
                       : formData.priorityType === "fast-track"
-                      ? "Priority customer added to fast-track queue"
-                      : "Customer added to queue successfully"}
+                      ? t.fastTrackAddedSuccess
+                      : t.customerAddedSuccess}
                   </p>
                 </div>
 
@@ -474,13 +514,13 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                         : "text-primary"
                     )}>QFlow</span>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-4">Hillbrow Clinic</p>
+                  <p className="text-sm text-muted-foreground mb-4">{staffLocationName ?? "QFlow location"}</p>
                   
                   <div className="border-t border-dashed border-border my-4" />
                   
                   {/* Customer Info */}
                   <p className="font-semibold text-foreground text-lg">{formData.name || "Customer"}</p>
-                  <p className="text-sm text-muted-foreground mb-2">Walk-in Customer</p>
+                  <p className="text-sm text-muted-foreground mb-2">{t.walkInCustomerLabel}</p>
                   {formData.priorityType !== "standard" && (
                     <span className={cn(
                       "inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium",
@@ -496,7 +536,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                   {/* Position Number */}
                   <div className="text-center py-4">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-                      {formData.priorityType === "emergency" ? "Emergency" : formData.priorityType === "fast-track" ? "Priority" : "Position"}
+                      {formData.priorityType === "emergency" ? t.emergencyLabel : formData.priorityType === "fast-track" ? t.priorityLabelShort : t.positionLabel}
                     </p>
                     <p className={cn(
                       "text-6xl font-bold",
@@ -513,13 +553,13 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                   {/* Wait Info */}
                   <div className="flex justify-between text-sm mt-4 py-3 border-t border-dashed border-border">
                     <div>
-                      <p className="text-muted-foreground">Est. Wait:</p>
+                      <p className="text-muted-foreground">{t.estWaitLabel}</p>
                       <p className="font-medium text-foreground">
-                        {formData.priorityType === "emergency" ? "Immediate" : formData.priorityType === "fast-track" ? "~5 min" : "~35 min"}
+                        {formData.priorityType === "emergency" ? t.immediateWait : `~${estimatedWait} min`}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-muted-foreground">Joined:</p>
+                      <p className="text-muted-foreground">{t.joinedLabel}</p>
                       <p className="font-medium text-foreground">{currentTime}</p>
                     </div>
                   </div>
@@ -528,8 +568,8 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                   <div className="mt-4 pt-4 border-t border-dashed border-border">
                     <p className="text-xs text-center text-muted-foreground leading-relaxed">
                       {formData.priorityType === "emergency" 
-                        ? "Please proceed to the counter immediately. Show your official ID or badge."
-                        : "Wait nearby and listen for your number to be called at the counter."}
+                        ? t.emergencyTicketInstructions
+                        : t.standardTicketInstructions}
                     </p>
                   </div>
                 </div>
@@ -542,14 +582,14 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                     className="w-full h-12 text-base font-medium rounded-xl border-2 border-primary text-primary hover:bg-primary hover:text-white"
                   >
                     <Printer className="w-5 h-5 mr-2" />
-                    Print Ticket
+                    {t.printTicket}
                   </Button>
                   <Button 
                     onClick={handleAddAnother}
                     className="w-full h-12 text-base font-medium rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
                   >
                     <UserPlus className="w-5 h-5 mr-2" />
-                    Add Another Walk-in
+                    {t.addAnotherWalkIn}
                   </Button>
                 </div>
                 
@@ -557,7 +597,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                   onClick={handleClose}
                   className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-4 mt-2"
                 >
-                  Close
+                  {t.close}
                 </button>
               </div>
             </>

@@ -1,26 +1,25 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useApp, Location } from "@/lib/app-context"
+import { useApp } from "@/lib/app-context"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ChevronDown, MapPin } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const locationTypes = [
-  { id: "clinic", label: "Clinic" },
-  { id: "bank", label: "Bank" },
-  { id: "government", label: "Government" },
-  { id: "other", label: "Other" }
-]
+import { fmt, useT } from "@/hooks/use-t"
 
 export function AddLocationScreen() {
-  const { addLocation, updateLocation, navigateTo } = useApp()
-  
-  // Check if we're editing an existing location
-  const editingLocation: Location | null = (window as unknown as { editingLocation: Location | null }).editingLocation || null
+  const { addLocation, updateLocation, navigateTo, editingLocation, setEditingLocation } = useApp()
+  const t = useT()
   const isEditing = !!editingLocation
+
+  const locationTypes = [
+    { id: "clinic" as const, label: t.typeClinic },
+    { id: "bank" as const, label: t.typeBank },
+    { id: "government" as const, label: t.typeGovernment },
+    { id: "other" as const, label: t.typeOther },
+  ]
 
   const [name, setName] = useState("")
   const [type, setType] = useState<"clinic" | "bank" | "government" | "other">("clinic")
@@ -28,7 +27,8 @@ export function AddLocationScreen() {
   const [capacity, setCapacity] = useState("")
   const [description, setDescription] = useState("")
   const [showTypeDropdown, setShowTypeDropdown] = useState(false)
-  const [coordinates] = useState({ lat: -26.2041, lng: 28.0473 })
+  const [lat, setLat] = useState("")
+  const [lng, setLng] = useState("")
 
   useEffect(() => {
     if (editingLocation) {
@@ -37,6 +37,8 @@ export function AddLocationScreen() {
       setAddress(editingLocation.address)
       setCapacity(editingLocation.capacity.toString())
       setDescription(editingLocation.description || "")
+      setLat(editingLocation.coordinates.lat.toString())
+      setLng(editingLocation.coordinates.lng.toString())
     }
   }, [editingLocation])
 
@@ -49,8 +51,8 @@ export function AddLocationScreen() {
       address,
       capacity: parseInt(capacity) || 50,
       description,
-      coordinates,
-      distance: "0 km",
+      coordinates: { lat: parseFloat(lat) || 0, lng: parseFloat(lng) || 0 },
+      distance: "—",
       queueCount: editingLocation?.queueCount || 0,
       waitTime: editingLocation?.waitTime || 0,
       isOpen: editingLocation?.isOpen ?? true
@@ -61,31 +63,32 @@ export function AddLocationScreen() {
     } else {
       addLocation(locationData)
     }
-    
+
+    setEditingLocation(null)
     navigateTo("admin-dashboard")
   }
 
   const handleCancel = () => {
+    setEditingLocation(null)
     navigateTo("admin-dashboard")
   }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <TopBar 
-        title={isEditing ? "Edit Location" : "Add Location"} 
+        title={isEditing ? t.editLocation : t.addLocation} 
         showBack 
         backTo="admin-dashboard"
       />
 
       <form onSubmit={handleSubmit} className="flex-1 px-4 py-6 space-y-5 overflow-auto">
-        {/* Location Name */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Location Name
+            {t.locationName}
           </label>
           <Input
             type="text"
-            placeholder="e.g., Hillbrow Clinic"
+            placeholder={t.locationNamePlaceholder}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="h-12"
@@ -93,10 +96,9 @@ export function AddLocationScreen() {
           />
         </div>
 
-        {/* Location Type */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Location Type
+            {t.locationType}
           </label>
           <div className="relative">
             <button
@@ -105,7 +107,7 @@ export function AddLocationScreen() {
               className="w-full h-12 px-4 flex items-center justify-between bg-background border border-input rounded-lg text-left"
             >
               <span className="text-foreground">
-                {locationTypes.find(t => t.id === type)?.label || "Select type"}
+                {locationTypes.find(locType => locType.id === type)?.label || t.selectType}
               </span>
               <ChevronDown className={cn(
                 "w-5 h-5 text-muted-foreground transition-transform",
@@ -115,20 +117,20 @@ export function AddLocationScreen() {
             
             {showTypeDropdown && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10">
-                {locationTypes.map((t) => (
+                {locationTypes.map((locType) => (
                   <button
-                    key={t.id}
+                    key={locType.id}
                     type="button"
                     onClick={() => { 
-                      setType(t.id as typeof type)
+                      setType(locType.id)
                       setShowTypeDropdown(false) 
                     }}
                     className={cn(
                       "w-full px-4 py-3 text-left hover:bg-muted transition-colors first:rounded-t-lg last:rounded-b-lg",
-                      type === t.id && "bg-primary/10 text-primary"
+                      type === locType.id && "bg-primary/10 text-primary"
                     )}
                   >
-                    {t.label}
+                    {locType.label}
                   </button>
                 ))}
               </div>
@@ -136,14 +138,13 @@ export function AddLocationScreen() {
           </div>
         </div>
 
-        {/* Address */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Address
+            {t.addressLabel}
           </label>
           <Input
             type="text"
-            placeholder="Full street address"
+            placeholder={t.addressPlaceholder}
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             className="h-12"
@@ -151,14 +152,13 @@ export function AddLocationScreen() {
           />
         </div>
 
-        {/* Capacity */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Capacity
+            {t.capacityField}
           </label>
           <Input
             type="number"
-            placeholder="Maximum queue capacity"
+            placeholder={t.capacityPlaceholder}
             value={capacity}
             onChange={(e) => setCapacity(e.target.value)}
             className="h-12"
@@ -167,62 +167,68 @@ export function AddLocationScreen() {
           />
         </div>
 
-        {/* Description */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Description (Optional)
+            {t.descriptionOptional}
           </label>
           <textarea
-            placeholder="Brief description of the location..."
+            placeholder={t.descriptionPlaceholder}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="w-full min-h-[100px] px-4 py-3 bg-background border border-input rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
 
-        {/* Map Preview */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
-            Location Preview
+            {t.coordinatesLabel}
           </label>
-          <div className="h-40 bg-[#e8f0e8] rounded-xl flex items-center justify-center border border-border relative overflow-hidden">
-            <svg className="w-full h-full absolute inset-0" viewBox="0 0 400 160">
-              <defs>
-                <pattern id="grid2" width="20" height="20" patternUnits="userSpaceOnUse">
-                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#d1ddd1" strokeWidth="0.5"/>
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid2)"/>
-              <path d="M 0 80 L 400 80" stroke="#fff" strokeWidth="4" />
-              <path d="M 200 0 L 200 160" stroke="#fff" strokeWidth="4" />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-lg">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <label className="block text-xs text-muted-foreground mb-1">{t.latitude}</label>
+              <Input
+                type="number"
+                step="any"
+                placeholder="-26.2041"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                className="h-12"
+                required
+              />
             </div>
-            <p className="absolute bottom-2 left-0 right-0 text-center text-xs text-muted-foreground">
-              Tap to adjust pin location
-            </p>
+            <div className="flex-1">
+              <label className="block text-xs text-muted-foreground mb-1">{t.longitude}</label>
+              <Input
+                type="number"
+                step="any"
+                placeholder="28.0473"
+                value={lng}
+                onChange={(e) => setLng(e.target.value)}
+                className="h-12"
+                required
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {t.coordinatesHint}
+          </p>
         </div>
       </form>
 
-      {/* Actions */}
       <div className="p-4 pb-8 space-y-3 border-t border-border bg-card">
         <Button 
           type="submit"
           onClick={handleSubmit}
           className="w-full h-12 text-base font-semibold"
         >
-          {isEditing ? "Save Changes" : "Save Location"}
+          {isEditing ? t.saveChanges : t.saveLocation}
         </Button>
         <button 
           type="button"
           onClick={handleCancel}
           className="w-full text-center text-muted-foreground hover:text-foreground transition-colors py-2"
         >
-          Cancel
+          {t.cancel}
         </button>
       </div>
     </div>

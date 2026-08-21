@@ -1,78 +1,112 @@
 "use client"
 
 import { useState } from "react"
-import { useApp, UserRole } from "@/lib/app-context"
+import { useApp } from "@/lib/app-context"
+import { useT } from "@/hooks/use-t"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TopBar } from "@/components/qflow/top-bar"
-import { Eye, EyeOff, User, Mail, Lock, ChevronDown } from "lucide-react"
+import { Eye, EyeOff, User, Mail, Lock, X } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { isStrongPassword } from "@/lib/password"
+import { PasswordRules } from "@/components/qflow/password-rules"
 
 export function RegisterScreen() {
-  const { register, navigateTo } = useApp()
+  const {
+    register,
+    loginWithGoogle,
+    navigateTo,
+    isAuthLoading,
+    authError,
+    clearAuthError,
+  } = useApp()
+  const t = useT()
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
-  const [role, setRole] = useState<UserRole>("user")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [showRoleDropdown, setShowRoleDropdown] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
 
-  const handleRegister = (e: React.FormEvent) => {
+  const [privacyConsent, setPrivacyConsent] = useState(false)
+  const [notificationConsent, setNotificationConsent] = useState(false)
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false)
+
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    clearAuthError()
+    setPasswordError(null)
+
     if (password !== confirmPassword) {
+      setPasswordError(t.passwordsDoNotMatch)
       return
     }
-    register(name, email, password, role)
+
+    if (!isStrongPassword(password)) {
+      setPasswordError(t.passwordTooWeak)
+      return
+    }
+
+    setIsSubmitting(true)
+    // Public sign-up is always a normal user. Staff are created by admins only.
+    await register(name, email, password, "user")
+    setIsSubmitting(false)
   }
 
   return (
     <div className="fixed inset-0 bg-background flex flex-col">
-      <TopBar 
-        title="Create Account" 
-        showBack 
-        backTo="login" 
+      <TopBar
+        title={t.createAccount}
+        showBack
+        backTo="login"
       />
 
-      {/* Form */}
       <form onSubmit={handleRegister} className="flex-1 px-6 py-6 space-y-4 overflow-auto">
+        {(authError || passwordError) && (
+          <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+            {authError || passwordError}
+          </div>
+        )}
+
         <div className="space-y-4">
-          {/* Full Name */}
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Full name"
+              placeholder={t.fullName}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="pl-11 h-12"
               required
+              autoComplete="name"
             />
           </div>
 
-          {/* Email */}
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               type="email"
-              placeholder="Email address"
+              placeholder={t.emailAddress}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="pl-11 h-12"
               required
+              autoComplete="email"
             />
           </div>
 
-          {/* Password */}
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               type={showPassword ? "text" : "password"}
-              placeholder="Password"
+              placeholder={t.password}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="pl-11 pr-11 h-12"
               required
+              autoComplete="new-password"
             />
             <button
               type="button"
@@ -83,16 +117,27 @@ export function RegisterScreen() {
             </button>
           </div>
 
-          {/* Confirm Password */}
+          <PasswordRules
+            password={password}
+            labels={{
+              passwordRuleLength: t.passwordRuleLength,
+              passwordRuleLower: t.passwordRuleLower,
+              passwordRuleUpper: t.passwordRuleUpper,
+              passwordRuleNumber: t.passwordRuleNumber,
+              passwordRuleSymbol: t.passwordRuleSymbol,
+            }}
+          />
+
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               type={showConfirmPassword ? "text" : "password"}
-              placeholder="Confirm password"
+              placeholder={t.confirmPassword}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="pl-11 pr-11 h-12"
               required
+              autoComplete="new-password"
             />
             <button
               type="button"
@@ -102,66 +147,201 @@ export function RegisterScreen() {
               {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
+        </div>
 
-          {/* Role Selector */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-              className="w-full h-12 px-4 flex items-center justify-between bg-background border border-input rounded-lg text-left"
-            >
-              <span className={role ? "text-foreground" : "text-muted-foreground"}>
-                {role === "user" ? "User" : role === "staff" ? "Staff" : "Select role"}
-              </span>
-              <ChevronDown className="w-5 h-5 text-muted-foreground" />
-            </button>
-            
-            {showRoleDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10">
-                <button
-                  type="button"
-                  onClick={() => { setRole("user"); setShowRoleDropdown(false) }}
-                  className="w-full px-4 py-3 text-left hover:bg-muted transition-colors first:rounded-t-lg"
+        <div className="border-t border-border pt-5 mt-2">
+          <p className="text-sm font-medium text-muted-foreground mb-3">{t.privacyAndData}</p>
+
+          <div className="bg-muted/50 border border-border rounded-2xl p-4 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {t.privacyDataSummary}
+            </p>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <div className="pt-0.5">
+                <div
+                  className={cn(
+                    "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+                    privacyConsent ? "bg-primary border-primary" : "border-input bg-background"
+                  )}
+                  onClick={() => setPrivacyConsent(!privacyConsent)}
                 >
-                  <p className="font-medium text-foreground">User</p>
-                  <p className="text-sm text-muted-foreground">Join queues at various locations</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setRole("staff"); setShowRoleDropdown(false) }}
-                  className="w-full px-4 py-3 text-left hover:bg-muted transition-colors last:rounded-b-lg border-t border-border"
-                >
-                  <p className="font-medium text-foreground">Staff</p>
-                  <p className="text-sm text-muted-foreground">Manage queues at your assigned location</p>
-                </button>
+                  {privacyConsent && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
               </div>
-            )}
+              <span className="text-sm text-foreground">
+                {t.agreeToThe}{" "}
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); setShowPrivacyModal(true) }}
+                  className="text-primary underline hover:text-primary/80"
+                >
+                  {t.privacyPolicy}
+                </button>
+                {" "}{t.andTerms}{" "}
+                <button
+                  type="button"
+                  onClick={(e) => e.preventDefault()}
+                  className="text-primary underline hover:text-primary/80"
+                >
+                  {t.termsOfService}
+                </button>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <div className="pt-0.5">
+                <div
+                  className={cn(
+                    "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+                    notificationConsent ? "bg-primary border-primary" : "border-input bg-background"
+                  )}
+                  onClick={() => setNotificationConsent(!notificationConsent)}
+                >
+                  {notificationConsent && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              <span className="text-sm text-muted-foreground">
+                {t.notificationConsentOptional}
+              </span>
+            </label>
           </div>
         </div>
 
-        <div className="pt-4">
-          <Button type="submit" className="w-full h-12 text-base font-semibold">
-            Create Account
+        <Button
+          type="submit"
+          className={cn(
+            "w-full h-12 text-base font-semibold transition-opacity",
+            !privacyConsent && "opacity-50 cursor-not-allowed"
+          )}
+          disabled={isAuthLoading || isSubmitting || !privacyConsent || !isStrongPassword(password)}
+        >
+          {isSubmitting ? t.creatingAccount : t.createAccount}
+        </Button>
+
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-4 bg-background text-muted-foreground">{t.orContinueWith}</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-12 text-base font-medium"
+            onClick={loginWithGoogle}
+            disabled={isAuthLoading || isSubmitting}
+          >
+            {t.continueWithGoogle}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-12 text-base font-medium"
+            onClick={() => {
+              clearAuthError()
+              navigateTo("email-otp")
+            }}
+            disabled={isAuthLoading || isSubmitting}
+          >
+            <Mail className="w-5 h-5 mr-2" />
+            {t.continueWithEmailCode}
           </Button>
         </div>
 
-        <p className="text-xs text-muted-foreground text-center pt-2">
-          By registering, you agree to our Terms of Service and Privacy Policy
-        </p>
       </form>
 
-      {/* Footer */}
       <div className="p-6 text-center border-t border-border">
         <p className="text-muted-foreground">
-          Already have an account?{" "}
-          <button 
+          {t.alreadyHaveAccount}{" "}
+          <button
             onClick={() => navigateTo("login")}
             className="text-primary font-semibold hover:underline"
           >
-            Login
+            {t.login}
           </button>
         </p>
       </div>
+
+      {showPrivacyModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="w-full bg-card rounded-t-2xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-lg font-bold text-foreground">{t.privacyModalTitle}</h2>
+              <button
+                onClick={() => setShowPrivacyModal(false)}
+                className="p-1 hover:bg-muted rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">{t.privacyWhatWeCollect}</h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>{t.privacyCollectNameEmail}</li>
+                  <li>{t.privacyCollectQueueHistory}</li>
+                  <li>{t.privacyCollectLocationSelections}</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">{t.privacyWhatWeDontDo}</h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>{t.privacyNeverSell}</li>
+                  <li>{t.privacyNeverShare}</li>
+                  <li>{t.privacyNoIdStorage}</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">{t.privacyYourRights}</h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>{t.privacyRequestData}</li>
+                  <li>{t.privacyDeleteAccount}</li>
+                  <li>{t.privacyCorrectInfo}</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">{t.privacyDataRetention}</h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>{t.privacyQueueHistoryRetention}</li>
+                  <li>{t.privacyAccountDataRetention}</li>
+                </ul>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                {t.privacyContact} <span className="text-primary">privacy@qflow.co.za</span>
+              </p>
+            </div>
+
+            <div className="px-6 py-4 border-t border-border">
+              <Button
+                variant="outline"
+                onClick={() => setShowPrivacyModal(false)}
+                className="w-full h-12 text-base font-medium"
+              >
+                {t.close}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
