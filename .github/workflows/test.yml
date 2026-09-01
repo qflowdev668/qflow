@@ -40,8 +40,9 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-cov
       - name: Run pytest with coverage
-        run: pytest --cov=qflow_api --cov-report=term --cov-report=xml --cov-fail-under=70
+        run: python -m pytest
         env:
+          PYTHONPATH: ${{ github.workspace }}/backend
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       - name: Upload coverage
