@@ -18,8 +18,12 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+site_url = "https://useqflow.app"
+additional_redirect_urls = [
+  "https://useqflow.app/auth/callback",
+  "http://127.0.0.1:8000/auth/callback",
+  "http://localhost:8000/auth/callback",
+]
 jwt_expiry = 3600
 enable_signup = true
 
@@ -31,4 +35,4 @@ enable_confirmations = false
 enabled = true
 client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
-redirect_uri = "http://localhost:3000/auth/callback"
+# Omit redirect_uri — defaults to https://<project-ref>.supabase.co/auth/v1/callback

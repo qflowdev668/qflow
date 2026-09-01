@@ -16,6 +16,7 @@ QFlow is a Progressive Web App for South African clinics, banks, and government 
 | **Counter display** | `/display/_/?id=<locationId>` (public kiosk / TV) |
 | **Stack** | FastAPI · Next.js 16 — build tool only, static export, no SSR/API routes · React 19 · TypeScript · Tailwind · Supabase · Resend · Web Push · Upstash |
 | **Package** | `qflow` (`package.json`) |
+| **Production** | [https://useqflow.app](https://useqflow.app) (once deployed) |
 | **Local** | `http://127.0.0.1:8000` |
 
 ### Architecture
@@ -166,8 +167,9 @@ Copy from `.env.local.example`. Never commit `.env.local`.
 | `VAPID_PRIVATE_KEY` | Push | Web Push private key |
 | `VAPID_SUBJECT` | Push | `mailto:` contact for VAPID |
 | `PUSH_DISPATCH_SECRET` | Push webhook | Bearer for `/api/push/dispatch` |
-| `NEXT_PUBLIC_APP_URL` | Production | Canonical app URL (e.g. `https://qflow.co.za`) |
-| `NEXT_PUBLIC_API_URL` | Optional | Leave empty when UI and API share port 8000 |
+| `NEXT_PUBLIC_APP_URL` | Production | Canonical app URL (`https://useqflow.app`) |
+| `ALLOWED_ORIGINS` | Production | Comma-separated CORS origins for FastAPI (e.g. `https://useqflow.app`) |
+| `NEXT_PUBLIC_API_URL` | Optional | Leave empty when UI and API share one host |
 | `UPSTASH_REDIS_REST_URL` | Optional | Distributed OTP rate limits |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | Upstash REST token |
 | `SUPABASE_DB_PASSWORD` | Optional | For `npm run db:backup` / linked dumps |
@@ -607,6 +609,7 @@ eslint.config.mjs
 - Column-level `UPDATE` on `profiles` (name, avatar, language, contact fields only)
 - Privilege-escalation trigger blocks client changes to `role` / `location_id`
 - Google OAuth blocked for staff/admin
+- Google OAuth `redirectTo` is always `${window.location.origin}/auth/callback` (see `lib/auth-redirect.ts`). After changing `supabase/config.toml` auth URLs, run `npx supabase config push` so the hosted project Site URL is not stuck on `localhost:3000`.
 - Multi-admin: `admin_accounts` is **service-role only**
 - Visit ratings: server enforces served-within-2h and one rating per `queue_entry`
 - Counter display API returns ticket numbers only (no customer PII)

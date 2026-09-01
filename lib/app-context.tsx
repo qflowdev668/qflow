@@ -12,6 +12,10 @@ import {
   ReactNode,
 } from "react"
 import { usePathname, useRouter } from "next/navigation"
+import {
+  googleOAuthSignInOptions,
+  oauthCallbackRedirectUrl,
+} from "@/lib/auth-redirect"
 import { createClient } from "@/lib/supabase/client"
 import {
   languageOptions,
@@ -1167,13 +1171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: { prompt: "select_account" },
-      },
-    })
+    const { error } = await supabase.auth.signInWithOAuth(googleOAuthSignInOptions())
 
     if (error) setAuthError(error.message)
   }, [supabase, clearAuthError])
@@ -1202,7 +1200,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         options: {
           // Role is never set from the client — public sign-up is always "user".
           data: { name: name || email.split("@")[0] },
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: oauthCallbackRedirectUrl(),
         },
       })
 
@@ -1361,7 +1359,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: oauthCallbackRedirectUrl(),
         },
       })
       if (error) {

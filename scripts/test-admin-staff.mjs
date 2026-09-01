@@ -149,7 +149,8 @@ try {
   const accessToken = adminSession.session.access_token
   const apiStaffEmail = `qflow.api.staff.${stamp}@gmail.com`
 
-  const res = await fetch("http://localhost:3000/api/admin/staff", {
+  const base = process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:8000"
+  const res = await fetch(`${base.replace(/\/$/, "")}/api/admin/staff`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -171,7 +172,7 @@ try {
     if (body.staff?.id) createdIds.push(body.staff.id)
   }
 
-  const listRes = await fetch("http://localhost:3000/api/admin/staff", {
+  const listRes = await fetch(`${base.replace(/\/$/, "")}/api/admin/staff`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   const listBody = await listRes.json().catch(() => ({}))
