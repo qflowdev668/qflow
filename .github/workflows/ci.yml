@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Smoke test static build via FastAPI
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 &
+          UV_PID=$!
+          cleanup() { kill "$UV_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/health >/dev/null; then
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "FastAPI did not become ready on :8000"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          curl -sf http://127.0.0.1:8000/health | tee /tmp/qflow-health.json
+          grep -q '"service":"qflow-api"' /tmp/qflow-health.json \
+            || grep -q '"service": "qflow-api"' /tmp/qflow-health.json
+
+          curl -sf -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/status | grep -E '^(200)$'
+          curl -sf -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/login | grep -E '^(200)$'
+          curl -sf -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8000/display/_/?id=test" | grep -E '^(200)$'
+
+          echo "FastAPI static smoke OK"
