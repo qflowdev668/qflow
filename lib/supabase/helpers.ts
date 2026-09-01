@@ -45,6 +45,12 @@ export function mapDbQueueEntry(
   location: Pick<Location, "name" | "address">,
   totalInQueue: number
 ): QueueEntry {
+  const priority = entry.priority
+  const priorityType =
+    priority === "emergency" || priority === "fast-track" || priority === "standard"
+      ? priority
+      : "standard"
+
   return {
     id: entry.id,
     locationId: entry.location_id,
@@ -55,6 +61,8 @@ export function mapDbQueueEntry(
     estimatedWait: estimateWait(entry.position - 1),
     status: entry.status as QueueStatus,
     joinedAt: new Date(entry.joined_at),
+    priorityType,
+    priorityCategory: entry.priority_category ?? undefined,
   }
 }
 

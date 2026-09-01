@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, createContext, useContext, useCallback } from "react"
-import { Clock, Check, Shield, MapPin, Building2 } from "lucide-react"
+import { Clock, Check, Shield, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useApp } from "@/lib/app-context"
+import { QFlowLogo } from "@/components/qflow/qflow-logo"
 
 // Session context
 interface SessionState {
@@ -136,9 +137,7 @@ export function SessionExpiredScreen({ onLogin, onRejoin }: SessionExpiredScreen
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-8">
       {/* Logo */}
-      <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-6">
-        <Building2 className="w-8 h-8 text-white" />
-      </div>
+      <QFlowLogo size="md" className="mb-6" />
 
       {/* Title */}
       <h1 className="text-2xl font-bold text-foreground mb-2 flex items-center gap-2">

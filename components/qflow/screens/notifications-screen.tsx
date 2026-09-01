@@ -5,6 +5,7 @@ import { useT } from "@/hooks/use-t"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Users, Bell, Star, Info, CheckCheck, BellOff } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { localizeNotificationMessage } from "@/lib/notification-templates"
 
 const iconMap = {
   queue: Users,
@@ -28,6 +29,7 @@ export function NotificationsScreen() {
     navigateTo,
     currentUser,
     refreshPendingRating,
+    language,
   } = useApp()
   const t = useT()
 
@@ -112,7 +114,7 @@ export function NotificationsScreen() {
                       "text-foreground leading-relaxed",
                       !notification.read && "font-medium"
                     )}>
-                      {notification.message}
+                      {localizeNotificationMessage(notification.message, language)}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {formatTime(notification.timestamp)}

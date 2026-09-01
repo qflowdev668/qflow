@@ -14,8 +14,10 @@ import {
   ServerOutageProvider,
   ServerOutageBanner,
 } from "@/components/qflow/server-outage-banner"
+import { Suspense } from "react"
 import { RoutePersistence } from "@/components/qflow/route-persistence"
 import { PwaRegister } from "@/components/qflow/pwa-register"
+import { FlowBar } from "@/components/qflow/flow-bar"
 
 function SessionGate({ children }: { children: ReactNode }) {
   const { isExpired } = useSession()
@@ -52,9 +54,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <HighContrastProvider>
             <div className="min-h-screen bg-background max-w-md mx-auto relative overflow-hidden shadow-2xl">
               <ServerOutageBanner />
-              <RoutePersistence />
+              <Suspense fallback={null}>
+                <RoutePersistence />
+              </Suspense>
               <PwaRegister />
-              <SessionGate>{children}</SessionGate>
+              <SessionGate>
+                {children}
+                <FlowBar />
+              </SessionGate>
             </div>
           </HighContrastProvider>
         </ServerOutageProvider>

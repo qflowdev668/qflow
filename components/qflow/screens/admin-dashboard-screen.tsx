@@ -24,7 +24,8 @@ import {
   Monitor,
   ChevronDown,
   ChevronUp,
-  ClipboardList
+  ClipboardList,
+  Shield
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -251,6 +252,10 @@ export function AdminDashboardScreen() {
     navigateTo("add-location")
   }
 
+  const handleScrollToLocations = () => {
+    document.getElementById("admin-locations")?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
   const handleEditLocation = (locationId: string) => {
     const location = locations.find(l => l.id === locationId)
     if (location) {
@@ -334,11 +339,11 @@ export function AdminDashboardScreen() {
         </div>
 
         {/* Quick Links - Part B */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             type="button"
-            onClick={handleAddLocation}
-            className="flex-1 bg-white/10 hover:bg-white/20 rounded-xl p-3 text-white text-sm font-medium transition-colors"
+            onClick={handleScrollToLocations}
+            className="flex-1 min-w-[30%] bg-white/10 hover:bg-white/20 rounded-xl p-3 text-white text-sm font-medium transition-colors"
           >
             <MapPin className="w-5 h-5 mx-auto mb-1" />
             {t.navLocations}
@@ -346,15 +351,23 @@ export function AdminDashboardScreen() {
           <button
             type="button"
             onClick={() => navigateTo("manage-staff")}
-            className="flex-1 bg-white/10 hover:bg-white/20 rounded-xl p-3 text-white text-sm font-medium transition-colors"
+            className="flex-1 min-w-[30%] bg-white/10 hover:bg-white/20 rounded-xl p-3 text-white text-sm font-medium transition-colors"
           >
             <UserCheck className="w-5 h-5 mx-auto mb-1" />
             {t.manageStaff}
           </button>
+          <button
+            type="button"
+            onClick={() => navigateTo("manage-admins")}
+            className="flex-1 min-w-[30%] bg-white/10 hover:bg-white/20 rounded-xl p-3 text-white text-sm font-medium transition-colors"
+          >
+            <Shield className="w-5 h-5 mx-auto mb-1" />
+            {t.manageAdmins}
+          </button>
           <button 
             type="button"
             onClick={() => navigateTo("audit-log")}
-            className="flex-1 bg-white/10 hover:bg-white/20 rounded-xl p-3 text-white text-sm font-medium transition-colors"
+            className="flex-1 min-w-[30%] bg-white/10 hover:bg-white/20 rounded-xl p-3 text-white text-sm font-medium transition-colors"
           >
             <ClipboardList className="w-5 h-5 mx-auto mb-1" />
             {t.navAuditLog}
@@ -623,7 +636,7 @@ export function AdminDashboardScreen() {
         </div>
 
         {/* Locations List */}
-        <div className="mb-6">
+        <div id="admin-locations" className="mb-6 scroll-mt-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold text-foreground">{t.locationsTitle}</h2>
             <Button size="sm" onClick={handleAddLocation}>

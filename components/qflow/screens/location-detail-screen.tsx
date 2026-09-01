@@ -91,6 +91,14 @@ export function LocationDetailScreen() {
   }
 
   const handleNotifyMe = () => {
+    try {
+      const key = "qflow_space_alerts"
+      const existing = JSON.parse(localStorage.getItem(key) ?? "[]") as string[]
+      const next = Array.from(new Set([...existing, location.id]))
+      localStorage.setItem(key, JSON.stringify(next))
+    } catch {
+      // ignore storage failures — toast still confirms the request
+    }
     setShowNotifyToast(true)
     setTimeout(() => setShowNotifyToast(false), 3000)
   }

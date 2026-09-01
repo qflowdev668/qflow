@@ -23,6 +23,8 @@ export interface Database {
           location_id: string | null
           avatar_url: string | null
           language: string
+          cell_number: string | null
+          sms_notifications: boolean
           created_at: string
         }
         Insert: {
@@ -33,6 +35,8 @@ export interface Database {
           location_id?: string | null
           avatar_url?: string | null
           language?: string
+          cell_number?: string | null
+          sms_notifications?: boolean
           created_at?: string
         }
         Update: {
@@ -43,6 +47,8 @@ export interface Database {
           location_id?: string | null
           avatar_url?: string | null
           language?: string
+          cell_number?: string | null
+          sms_notifications?: boolean
         }
         Relationships: []
       }
@@ -325,6 +331,35 @@ password_reset_tokens: {
           id?: string
           action?: string
           detail?: string | null
+        }
+        Relationships: []
+      }
+      admin_accounts: {
+        Row: {
+          id: string
+          name: string
+          cell_number: string
+          email: string
+          is_active: boolean
+          last_login_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          cell_number: string
+          email: string
+          is_active?: boolean
+          last_login_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          cell_number?: string
+          email?: string
+          is_active?: boolean
+          last_login_at?: string | null
         }
         Relationships: []
       }

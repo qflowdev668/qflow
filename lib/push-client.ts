@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/api-client"
+
 /** Fire-and-forget Web Push for a queue lifecycle event (staff/admin session). */
 export function dispatchQueuePush(input: {
   userId: string | null | undefined
@@ -6,7 +8,7 @@ export function dispatchQueuePush(input: {
   url?: string
 }) {
   if (!input.userId || typeof window === "undefined") return
-  void fetch("/api/push/dispatch", {
+  void apiFetch("/api/push/dispatch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

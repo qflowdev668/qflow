@@ -17,8 +17,8 @@ export function BottomNav() {
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border safe-area-bottom">
-      <div className="flex items-center justify-around h-16 max-w-md mx-auto">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-border/80 safe-area-pb">
+      <div className="flex items-stretch justify-around max-w-lg mx-auto h-[72px]">
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive =
@@ -29,21 +29,24 @@ export function BottomNav() {
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => navigateTo(item.id)}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 w-16 h-full transition-colors relative",
-                isActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                "flex flex-col items-center justify-center gap-1 flex-1 min-w-0 transition-colors relative",
+                isActive ? "text-foreground" : "text-muted-foreground"
               )}
             >
               <div className="relative">
-                <Icon className="w-6 h-6" />
+                <Icon
+                  className={cn("w-6 h-6", isActive && "stroke-[2.5] text-foreground")}
+                />
                 {hasNotification && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-secondary rounded-full animate-pulse" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-secondary rounded-full animate-pulse border-2 border-white" />
                 )}
               </div>
-              <span className="text-xs font-medium">{item.label}</span>
+              <span className={cn("text-xs", isActive ? "font-bold" : "font-medium")}>
+                {item.label}
+              </span>
             </button>
           )
         })}

@@ -21,6 +21,7 @@ export const SCREEN_PATHS: Record<string, string> = {
   profile: "/profile",
   "edit-profile": "/profile/edit",
   "help-support": "/help",
+  "system-status": "/status",
   "language-selection": "/profile/language",
   "accessibility-settings": "/profile/accessibility",
   "notification-settings": "/profile/notifications",
@@ -31,6 +32,7 @@ export const SCREEN_PATHS: Record<string, string> = {
   "admin-dashboard": "/admin",
   "add-location": "/admin/locations/new",
   "manage-staff": "/admin/staff",
+  "manage-admins": "/admin/admins",
   "audit-log": "/admin/audit",
 }
 
@@ -38,32 +40,52 @@ const PATH_TO_SCREEN: Record<string, string> = Object.fromEntries(
   Object.entries(SCREEN_PATHS).map(([screen, path]) => [path, screen])
 )
 
+/**
+ * Static export only prerenders `/location/_/`. Real location ids go in `?id=`
+ * so the client router never requests a missing `/location/{uuid}/` page
+ * (which FastAPI used to fill with the splash HTML).
+ */
 export function pathForScreen(
   screen: string,
   locationId?: string | null
 ): string {
   if (screen === "location-detail") {
-    return locationId ? `/location/${locationId}` : "/home"
+    return locationId
+      ? `/location/_/?id=${encodeURIComponent(locationId)}`
+      : "/home"
   }
   if (screen === "join-queue-confirmation") {
-    return locationId ? `/location/${locationId}/join` : "/home"
+    return locationId
+      ? `/location/_/join/?id=${encodeURIComponent(locationId)}`
+      : "/home"
   }
   return SCREEN_PATHS[screen] ?? "/"
 }
 
 export function screenFromPath(pathname: string): string {
-  if (pathname.startsWith("/location/") && pathname.endsWith("/join")) {
+  const path = pathname.replace(/\/$/, "") || "/"
+  if (path.endsWith("/join") && path.startsWith("/location/")) {
     return "join-queue-confirmation"
   }
-  if (pathname.startsWith("/location/")) {
+  if (path.startsWith("/location/")) {
     return "location-detail"
   }
-  return PATH_TO_SCREEN[pathname] ?? "splash"
+  return PATH_TO_SCREEN[path] ?? PATH_TO_SCREEN[pathname] ?? "splash"
 }
 
 export function locationIdFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/location\/([^/]+)/)
-  return match?.[1] ?? null
+  const id = match?.[1] ?? null
+  if (!id || id === "_") return null
+  return id
+}
+
+/** Resolve a location id from the static `/location/_/?id=` URL (or a legacy path). */
+export function locationIdFromUrl(pathname: string, search: string): string | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search)
+  const fromQuery = params.get("id")?.trim()
+  if (fromQuery) return fromQuery
+  return locationIdFromPath(pathname)
 }
 
 export const PUBLIC_PATH_PREFIXES = [
@@ -73,6 +95,9 @@ export const PUBLIC_PATH_PREFIXES = [
   "/register",
   "/forgot-password",
   "/auth",
+  "/status",
+  "/display",
+  "/help",
 ]
 
 export function isPublicPath(pathname: string): boolean {
@@ -92,28 +117,29 @@ export function pathAllowedForRole(
   pathname: string,
   role: AppRole | null | undefined
 ): string | null {
-  if (isPublicPath(pathname)) return null
+  const path = pathname.split("?")[0] || "/"
+  if (isPublicPath(path)) return null
 
-  if (pathname.startsWith("/admin")) {
+  if (path.startsWith("/admin")) {
     if (role !== "admin") return role ? homePathForRole(role) : "/login"
     return null
   }
 
-  if (pathname.startsWith("/staff")) {
+  if (path.startsWith("/staff")) {
     if (role !== "staff") return role ? homePathForRole(role) : "/login"
     return null
   }
 
   // User app surfaces — staff/admin are sent to their dashboards
   const userApp =
-    pathname.startsWith("/home") ||
-    pathname.startsWith("/map") ||
-    pathname.startsWith("/location") ||
-    pathname.startsWith("/queue") ||
-    pathname.startsWith("/profile") ||
-    pathname.startsWith("/notifications") ||
-    pathname.startsWith("/help") ||
-    pathname.startsWith("/rate")
+    path.startsWith("/home") ||
+    path.startsWith("/map") ||
+    path.startsWith("/location") ||
+    path.startsWith("/queue") ||
+    path.startsWith("/profile") ||
+    path.startsWith("/notifications") ||
+    path.startsWith("/help") ||
+    path.startsWith("/rate")
 
   if (userApp) {
     if (!role) return "/login"
@@ -138,7 +164,8 @@ export function readLastRoute(): string | null {
 export function writeLastRoute(pathname: string): void {
   if (typeof window === "undefined") return
   if (!shouldPersistPath(pathname)) return
-  window.sessionStorage.setItem(LAST_ROUTE_KEY, pathname)
+  const search = window.location.search ?? ""
+  window.sessionStorage.setItem(LAST_ROUTE_KEY, `${pathname}${search}`)
 }
 
 export function clearLastRoute(): void {

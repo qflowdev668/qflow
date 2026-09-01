@@ -16,17 +16,17 @@ interface LocationCardProps {
 }
 
 function getWaitTimeColor(minutes: number) {
-  if (minutes < 15) return "text-[#10B981]"
-  if (minutes <= 30) return "text-[#F59E0B]"
-  if (minutes <= 60) return "text-[#F97316]"
-  return "text-[#EF4444]"
+  if (minutes < 15) return "text-success"
+  if (minutes <= 30) return "text-secondary"
+  if (minutes <= 60) return "text-accent"
+  return "text-destructive"
 }
 
 const typeColors = {
-  clinic: "bg-blue-100 text-blue-700",
-  bank: "bg-amber-100 text-amber-700",
-  government: "bg-emerald-100 text-emerald-700",
-  other: "bg-gray-100 text-gray-700"
+  clinic: "bg-primary/10 text-primary",
+  bank: "bg-secondary/10 text-secondary",
+  government: "bg-success/10 text-success",
+  other: "bg-muted text-foreground"
 }
 
 export function LocationCard({ location, variant = "vertical", onClick, disabled = false }: LocationCardProps) {
@@ -60,7 +60,7 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
       <div
         {...cardProps}
         className={cn(
-          "flex-shrink-0 w-64 bg-card rounded-xl p-4 shadow-sm border border-border text-left transition-shadow",
+          "flex-shrink-0 w-64 bg-card rounded-2xl p-4 shadow-sm border border-border/70 text-left transition-shadow",
           (isFull || isClosed) && "opacity-60",
           disabled ? "cursor-not-allowed" : "cursor-pointer hover:shadow-md"
         )}
@@ -73,7 +73,7 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
                 {typeLabel}
               </span>
               {disabled && (
-                <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                   {t.offline}
                 </span>
               )}
@@ -81,13 +81,13 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
           </div>
           <div className={cn(
             "w-2.5 h-2.5 rounded-full flex-shrink-0 ml-2 mt-1",
-            location.isOpen ? "bg-[#10B981]" : "bg-[#EF4444]"
+            location.isOpen ? "bg-success" : "bg-destructive"
           )} />
         </div>
 
         <div className={cn(
           "flex items-center gap-1.5 text-xs font-medium mb-2",
-          location.isOpen ? "text-[#10B981]" : "text-[#EF4444]"
+          location.isOpen ? "text-success" : "text-destructive"
         )}>
           <span className={cn("w-1.5 h-1.5 rounded-full", location.isOpen ? "bg-[#10B981]" : "bg-[#EF4444]")} />
           {location.isOpen ? t.openLabel : t.closedLabel}
@@ -100,7 +100,7 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
           </div>
           {isFull ? (
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-semibold rounded-full">
+              <span className="px-2 py-0.5 bg-destructive/10 text-destructive text-xs font-semibold rounded-full">
                 {t.queueFull}
               </span>
             </div>
@@ -161,7 +161,7 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
     <div
       {...cardProps}
       className={cn(
-        "w-full bg-card rounded-xl p-4 shadow-sm border border-border text-left transition-shadow",
+        "w-full bg-card rounded-2xl p-4 shadow-sm border border-border/70 text-left transition-shadow",
         (isFull || isClosed) && "opacity-60",
         disabled ? "cursor-not-allowed" : "cursor-pointer hover:shadow-md"
       )}
@@ -183,7 +183,7 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
         </div>
         <div className={cn(
           "flex items-center gap-1.5 ml-3",
-          location.isOpen ? "text-[#10B981]" : "text-[#EF4444]"
+          location.isOpen ? "text-success" : "text-destructive"
         )}>
           <div className={cn("w-2 h-2 rounded-full", location.isOpen ? "bg-[#10B981]" : "bg-[#EF4444]")} />
           <span className="text-xs font-medium whitespace-nowrap">

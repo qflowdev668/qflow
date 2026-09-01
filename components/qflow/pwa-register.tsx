@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { useApp } from "@/lib/app-context"
+import { apiFetch } from "@/lib/api-client"
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
@@ -45,7 +46,7 @@ async function syncPushSubscription() {
     })
   }
 
-  await fetch("/api/push/subscribe", {
+  await apiFetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(sub.toJSON()),

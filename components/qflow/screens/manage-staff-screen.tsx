@@ -6,10 +6,21 @@ import { useT, fmt } from "@/hooks/use-t"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { UserPlus, MapPin, Trash2, RefreshCw, Eye, EyeOff } from "lucide-react"
+import {
+  UserPlus,
+  MapPin,
+  Trash2,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Ban,
+  CheckCircle2,
+  Settings2,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isStrongPassword } from "@/lib/password"
 import { PasswordRules } from "@/components/qflow/password-rules"
+import { apiFetch } from "@/lib/api-client"
 
 type StaffMember = {
   id: string
@@ -18,7 +29,10 @@ type StaffMember = {
   locationId: string | null
   locationName: string | null
   createdAt?: string
+  suspended?: boolean
 }
+
+type StaffPatchAction = "suspendStaff" | "deleteStaff" | "unsuspendStaff"
 
 export function ManageStaffScreen() {
   const { locations, navigateTo } = useApp()
@@ -35,12 +49,14 @@ export function ManageStaffScreen() {
   const [locationId, setLocationId] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [manageTarget, setManageTarget] = useState<StaffMember | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
   const loadStaff = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/admin/staff")
+      const res = await apiFetch("/api/admin/staff")
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? "Could not load staff.")
@@ -73,7 +89,7 @@ export function ManageStaffScreen() {
     }
     setSubmitting(true)
     try {
-      const res = await fetch("/api/admin/staff", {
+      const res = await apiFetch("/api/admin/staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -103,7 +119,7 @@ export function ManageStaffScreen() {
 
   const handleReassign = async (id: string, nextLocationId: string) => {
     setError(null)
-    const res = await fetch("/api/admin/staff", {
+    const res = await apiFetch("/api/admin/staff", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -120,25 +136,32 @@ export function ManageStaffScreen() {
     await loadStaff()
   }
 
-  const handleRemove = async (member: StaffMember) => {
-    const ok = window.confirm(
-      fmt(t.removeStaffConfirm, { name: member.name })
-    )
-    if (!ok) return
-
+  const patchStaff = async (member: StaffMember, action: StaffPatchAction) => {
+    setActionLoading(true)
     setError(null)
-    const res = await fetch("/api/admin/staff", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: member.id, removeStaff: true }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      setError(data.error ?? "Could not remove staff.")
-      return
+    try {
+      const res = await apiFetch("/api/admin/staff", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: member.id, [action]: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? "Could not update staff.")
+        return false
+      }
+      setManageTarget(null)
+      if (action === "suspendStaff") showToast(t.staffSuspendedToast)
+      else if (action === "unsuspendStaff") showToast(t.staffReactivatedToast)
+      else showToast(t.staffDeletedToast)
+      await loadStaff()
+      return true
+    } catch {
+      setError("Could not update staff.")
+      return false
+    } finally {
+      setActionLoading(false)
     }
-    showToast(t.staffUpdated)
-    await loadStaff()
   }
 
   return (
@@ -276,9 +299,18 @@ export function ManageStaffScreen() {
                   key={member.id}
                   className="bg-card border border-border rounded-2xl p-4 space-y-3"
                 >
-                  <div>
-                    <p className="font-semibold text-foreground">{member.name}</p>
-                    <p className="text-sm text-muted-foreground">{member.email}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-foreground">{member.name}</p>
+                        {member.suspended && (
+                          <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            {t.staffSuspended}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{member.email}</p>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -293,7 +325,8 @@ export function ManageStaffScreen() {
                     <select
                       value={member.locationId ?? ""}
                       onChange={(e) => void handleReassign(member.id, e.target.value)}
-                      className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      disabled={member.suspended}
+                      className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
                     >
                       <option value="">{t.noLocationYet}</option>
                       {locations.map((loc) => (
@@ -304,14 +337,27 @@ export function ManageStaffScreen() {
                     </select>
                   </div>
 
+                  {member.suspended ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-10"
+                      onClick={() => void patchStaff(member, "unsuspendStaff")}
+                      disabled={actionLoading}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      {t.reactivateStaff}
+                    </Button>
+                  ) : null}
+
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full h-10 border-destructive text-destructive hover:bg-destructive hover:text-white"
-                    onClick={() => void handleRemove(member)}
+                    className="w-full h-10"
+                    onClick={() => setManageTarget(member)}
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    {t.removeStaffRole}
+                    <Settings2 className="w-4 h-4 mr-2" />
+                    {t.manageStaffAccess}
                   </Button>
                 </div>
               ))}
@@ -327,6 +373,69 @@ export function ManageStaffScreen() {
           {t.backToAdmin}
         </Button>
       </div>
+
+      {manageTarget && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          role="presentation"
+          onClick={() => {
+            if (!actionLoading) setManageTarget(null)
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="manage-staff-title"
+            aria-describedby="manage-staff-desc"
+            className="w-full max-w-[380px] bg-white rounded-2xl shadow-xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="manage-staff-title"
+              className="text-lg font-bold text-foreground text-center mb-2"
+            >
+              {fmt(t.manageStaffAccessTitle, { name: manageTarget.name })}
+            </h3>
+            <p
+              id="manage-staff-desc"
+              className="text-sm text-muted-foreground text-center mb-6"
+            >
+              {t.manageStaffAccessDesc}
+            </p>
+
+            {!manageTarget.suspended && (
+              <Button
+                type="button"
+                className="w-full h-[52px] bg-[#F59E0B] hover:bg-[#F59E0B]/90 mb-3 text-white"
+                disabled={actionLoading}
+                onClick={() => void patchStaff(manageTarget, "suspendStaff")}
+              >
+                <Ban className="w-4 h-4 mr-2" />
+                {actionLoading ? "..." : t.suspendStaff}
+              </Button>
+            )}
+
+            <Button
+              type="button"
+              className="w-full h-[52px] bg-[#EF4444] hover:bg-[#EF4444]/90 mb-3"
+              disabled={actionLoading}
+              onClick={() => void patchStaff(manageTarget, "deleteStaff")}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              {actionLoading ? "..." : t.deleteStaffPermanently}
+            </Button>
+
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => setManageTarget(null)}
+              className="w-full text-center text-muted-foreground hover:text-foreground transition-colors py-2 text-sm"
+            >
+              {t.cancel}
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-4 right-4 bg-[#10B981] text-white rounded-xl p-4 shadow-lg z-50 text-center font-medium">

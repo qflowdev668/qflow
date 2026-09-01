@@ -61,7 +61,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
     title: payload.title,
     body: payload.body,
     url: payload.url ?? "/notifications",
-    icon: payload.icon ?? "/icon-192.png",
+    icon: payload.icon ?? "/icon-192x192.png",
   })
 
   let sent = 0

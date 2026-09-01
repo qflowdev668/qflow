@@ -17,6 +17,9 @@ create table public.profiles (
   location_id uuid,
   avatar_url text,
   language text not null default 'en',
+  cell_number text,
+  sms_notifications boolean not null default false,
+  staff_suspended_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -128,7 +131,13 @@ returns trigger
 language plpgsql
 security definer set search_path = ''
 as $$
+declare
+  provisioned_role public.user_role := 'user'::public.user_role;
 begin
+  if new.raw_app_meta_data->>'profile_role' in ('staff', 'admin') then
+    provisioned_role := (new.raw_app_meta_data->>'profile_role')::public.user_role;
+  end if;
+
   insert into public.profiles (id, name, email, role)
   values (
     new.id,
@@ -138,8 +147,7 @@ begin
       split_part(new.email, '@', 1)
     ),
     new.email,
-    -- Public sign-up is always a normal user. Staff/admin are created by admins only.
-    'user'
+    provisioned_role
   )
   on conflict (id) do nothing;
   return new;
@@ -563,7 +571,7 @@ create trigger profiles_prevent_privilege_escalation
   execute function public.prevent_profile_privilege_escalation();
 
 revoke update on table public.profiles from anon, authenticated;
-grant update (name, avatar_url, language) on table public.profiles to authenticated;
+grant update (name, avatar_url, language, cell_number, sms_notifications) on table public.profiles to authenticated;
 
 -- Locations
 create policy "Anyone can view locations"
@@ -683,6 +691,21 @@ create policy "Admins can view audit log"
 create policy "Staff and admins can append to audit log"
   on public.audit_log for insert
   with check (public.current_user_role() in ('staff', 'admin'));
+
+-- Admin accounts (cellphone OTP). Service role only; env ADMIN_OTP_* is bootstrap.
+create table if not exists public.admin_accounts (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  cell_number text not null unique,
+  email text not null unique,
+  is_active boolean not null default true,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.admin_accounts enable row level security;
+revoke all on table public.admin_accounts from anon, authenticated;
+grant all on table public.admin_accounts to service_role;
 
 -- Realtime: push queue and notification changes to connected clients
 alter publication supabase_realtime add table public.queue_entries;

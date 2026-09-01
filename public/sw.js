@@ -1,6 +1,6 @@
 /* QFlow service worker — offline shell cache + Web Push */
-const CACHE = "qflow-v1"
-const PRECACHE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"]
+const CACHE = "qflow-v2"
+const PRECACHE = ["/", "/manifest.json", "/icon-192x192.png", "/icon-512x512.png", "/apple-touch-icon.png"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -22,6 +22,13 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) return
+
+  // Never cache-first HTML pages — a misspelled route used to store the splash
+  // document under /location/{id} and keep sending users back to the opening screen.
+  if (request.mode === "navigate" || request.destination === "document") {
+    event.respondWith(fetch(request).catch(() => caches.match("/")))
+    return
+  }
 
   event.respondWith(
     caches.match(request).then((cached) => {
@@ -57,8 +64,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || "QFlow", {
       body: data.body || "",
-      icon: data.icon || "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: data.icon || "/icon-192x192.png",
+      badge: "/icon-192x192.png",
       data: { url: data.url || "/notifications" },
     })
   )

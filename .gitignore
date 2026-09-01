@@ -15,10 +15,28 @@ next.user-config.*
 node_modules
 
 .next/
+out/
 .DS_Store
 tsconfig.tsbuildinfo
 
 
 # Supabase CLI cache
 supabase/.temp/
+
+# Database dumps (keep off git — store elsewhere)
+backups/
+
+# Test / coverage artifacts
+coverage/
+playwright-report/
+test-results/
+.lighthouseci/
+
+# Python / FastAPI queue service
+backend/.venv/
+backend/**/__pycache__/
+backend/**/.pytest_cache/
+backend/.coverage
+backend/coverage.xml
+*.pyc
 

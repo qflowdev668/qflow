@@ -143,7 +143,22 @@ export type TranslationKeys = {
   privacyQueueHistoryRetention: string
   privacyAccountDataRetention: string
   privacyContact: string
+  termsModalTitle: string
+  termsWhatYouAgree: string
+  termsUseForQueues: string
+  termsAccurateInfo: string
+  termsRespectStaff: string
+  termsOurCommitments: string
+  termsKeepServiceRunning: string
+  termsProtectPrivacy: string
+  termsFairAccess: string
+  termsContact: string
   close: string
+  filterAll: string
+  filterAvailable: string
+  filterBusy: string
+  filterFull: string
+  openDirections: string
 
   forgotPasswordTitle: string
   forgotPasswordDesc: string
@@ -450,12 +465,43 @@ export type TranslationKeys = {
   staffList: string
   noStaffYet: string
   reassignLocation: string
+  manageStaffAccess: string
+  manageStaffAccessTitle: string
+  manageStaffAccessDesc: string
+  suspendStaff: string
+  deleteStaffPermanently: string
+  reactivateStaff: string
+  staffSuspended: string
+  staffSuspendedToast: string
+  staffReactivatedToast: string
+  staffDeletedToast: string
   removeStaffRole: string
   removeStaffConfirm: string
   staffCreated: string
   staffUpdated: string
   unassigned: string
   backToAdmin: string
+  manageAdmins: string
+  manageAdminsSubtitle: string
+  addAdmin: string
+  adminName: string
+  adminCell: string
+  adminEmail: string
+  createAdminAccount: string
+  creatingAdmin: string
+  adminList: string
+  noAdminsYet: string
+  deactivateAdmin: string
+  reactivateAdmin: string
+  deactivateAdminConfirm: string
+  adminCreated: string
+  adminUpdated: string
+  adminActive: string
+  adminInactive: string
+  lastLogin: string
+  neverLoggedIn: string
+  bootstrapAdminBadge: string
+  bootstrapCannotRemove: string
 
   joinQueue: string
   offline: string
@@ -555,6 +601,11 @@ export type TranslationKeys = {
   getSmsInstead: string
   smsNotAvailableDesc: string
   smsPhonePlaceholder: string
+  smsOptInPrompt: string
+  smsYesTextMe: string
+  smsSkip: string
+  smsInvalidNumber: string
+  smsAlertsDesc: string
   queueMoveNotifications: string
   leaveQueueAnytime: string
   joinAsEmergency: string
@@ -572,21 +623,46 @@ export type TranslationKeys = {
   activeExpires: string
   helpSupport: string
   helpIntro: string
+  helpSectionCommonQuestions: string
   helpFaqJoinQ: string
   helpFaqJoinA: string
+  helpFaqMissTurnQ: string
+  helpFaqMissTurnA: string
+  helpFaqTwoQueuesQ: string
+  helpFaqTwoQueuesA: string
   helpFaqTurnQ: string
   helpFaqTurnA: string
-  helpFaqLeaveQ: string
-  helpFaqLeaveA: string
-  helpFaqPasswordQ: string
-  helpFaqPasswordA: string
-  helpFaqRolesQ: string
-  helpFaqRolesA: string
-  helpFaqPrivacyQ: string
-  helpFaqPrivacyA: string
-  helpContactTitle: string
+  helpFaqPriorityQ: string
+  helpFaqPriorityA: string
+  /** Discreet path for staff/admin — does not reveal unlock gestures. */
+  staffOrAdminContactHint: string
+  staffOrAdminContactLink: string
+  helpSectionContact: string
   helpContactDesc: string
-  helpEmailUs: string
+  helpSendMessage: string
+  helpSectionTechnical: string
+  helpCheckSystemStatus: string
+  helpClearAppData: string
+  helpClearingData: string
+  helpClearAppDataHint: string
+  helpSectionAccessibility: string
+  helpAccessibilitySettings: string
+  systemStatusTitle: string
+  systemStatusIntro: string
+  statusNetwork: string
+  helpStatusOnline: string
+  helpStatusOffline: string
+  statusBackend: string
+  statusConfigured: string
+  statusNotConfigured: string
+  statusAppApi: string
+  statusChecking: string
+  statusReachable: string
+  statusUnreachable: string
+  statusLocations: string
+  statusLocationsCount: string
+  statusLastSynced: string
+  backToHelp: string
   myDataPrivacy: string
   downloadMyData: string
   downloadMyDataDesc: string
@@ -625,6 +701,8 @@ export type TranslationKeys = {
   daysAgo: string
   noNotificationsYet: string
   noNotificationsHint: string
+  /** Shown when the user declines Web Push while joining / waiting in line. */
+  keepTabOpenForTurn: string
   notificationSettings: string
   pushNotifications: string
   enabledOnDevice: string
@@ -659,6 +737,7 @@ export type TranslationKeys = {
   rateYourExperience: string
   howWasExperience: string
   feedbackHelpsServe: string
+  rateOnlyAfterServed: string
   ratingPoor: string
   ratingFair: string
   ratingGood: string
@@ -709,7 +788,7 @@ const en = {
   arriveReadyDesc: "We will tell you when to come. This helps you save time.",
 
   welcomeBack: "Welcome back",
-  signInToContinue: "Sign in to use QFlow",
+  signInToContinue: "Sign in to continue to QFlow",
   emailAddress: "Email",
   password: "Password",
   login: "Sign in",
@@ -799,7 +878,7 @@ const en = {
   privacyPolicy: "Privacy Policy",
   andTerms: "and",
   termsOfService: "Terms of Service",
-  notificationConsentOptional: "I agree to get SMS and email about my line (optional)",
+  notificationConsentOptional: "I agree to get app and phone alerts about my line (optional)",
   alreadyHaveAccount: "Already have an account?",
   privacyModalTitle: "How QFlow uses your data",
   privacyWhatWeCollect: "What we collect:",
@@ -818,7 +897,22 @@ const en = {
   privacyQueueHistoryRetention: "Line history: 12 months",
   privacyAccountDataRetention: "Account data: until you delete it",
   privacyContact: "Contact:",
+  termsModalTitle: "Terms of Service",
+  termsWhatYouAgree: "When you use QFlow, you agree to:",
+  termsUseForQueues: "Use the app to join and manage real queues fairly",
+  termsAccurateInfo: "Give accurate details so staff can help you",
+  termsRespectStaff: "Treat staff and other people in line with respect",
+  termsOurCommitments: "What QFlow commits to:",
+  termsKeepServiceRunning: "Keep the service running as reliably as we can",
+  termsProtectPrivacy: "Protect your privacy under POPIA",
+  termsFairAccess: "Give fair access to queue spots at each location",
+  termsContact: "Questions:",
   close: "Close",
+  filterAll: "Show all places",
+  filterAvailable: "Show places with space",
+  filterBusy: "Show busy places",
+  filterFull: "Show full places",
+  openDirections: "Open directions",
 
   forgotPasswordTitle: "Forgot password",
   forgotPasswordDesc: "Enter your email. We will send a one-time code so you can make a new password.",
@@ -857,7 +951,7 @@ const en = {
   enterLoginCodeFromEmail: "Type the login code from your email.",
   signingIn: "Signing in...",
 
-  splashTagline: "Skip the line. Not the service.",
+  splashTagline: "Where Waiting Ends",
   cookieTitle: "QFlow uses essential cookies",
   cookieDesc: "We use cookies to keep you signed in and save your place in line. No ads or tracking cookies.",
   cookieAccept: "OK, got it",
@@ -973,7 +1067,7 @@ const af = {
   privacyPolicy: "Privaatheidsbeleid",
   andTerms: "en",
   termsOfService: "Diensbepalings",
-  notificationConsentOptional: "Ek stem in om SMS en e-pos oor my ry te kry (opsioneel)",
+  notificationConsentOptional: "Ek stem in om app- en foonwaarskuwings oor my ry te kry (opsioneel)",
   alreadyHaveAccount: "Het jy reeds 'n rekening?",
   privacyModalTitle: "Hoe QFlow jou data gebruik",
   privacyWhatWeCollect: "Wat ons insamel:",
@@ -992,7 +1086,22 @@ const af = {
   privacyQueueHistoryRetention: "Ry-geskiedenis: 12 maande",
   privacyAccountDataRetention: "Rekeningdata: tot jy dit skrap",
   privacyContact: "Kontak:",
+  termsModalTitle: "Diensbepalings",
+  termsWhatYouAgree: "As jy QFlow gebruik, stem jy in om:",
+  termsUseForQueues: "Die app regverdig te gebruik om by rye aan te sluit",
+  termsAccurateInfo: "Regte besonderhede te gee sodat personeel jou kan help",
+  termsRespectStaff: "Personeel en ander in die ry met respek te behandel",
+  termsOurCommitments: "Waartoe QFlow verbind is:",
+  termsKeepServiceRunning: "Die diens so betroubaar moontlik te hou",
+  termsProtectPrivacy: "Jou privaatheid onder POPIA te beskerm",
+  termsFairAccess: "Billike toegang tot ryplekke by elke plek te gee",
+  termsContact: "Vrae:",
   close: "Sluit",
+  filterAll: "Wys alle plekke",
+  filterAvailable: "Wys plekke met spasie",
+  filterBusy: "Wys besige plekke",
+  filterFull: "Wys vol plekke",
+  openDirections: "Maak aanwysings oop",
 
   forgotPasswordTitle: "Wagwoord vergeet",
   forgotPasswordDesc: "Tik jou e-pos in. Ons stuur 'n eenmalige kode sodat jy 'n nuwe wagwoord kan maak.",
@@ -1147,7 +1256,7 @@ const zu = {
   privacyPolicy: "Inqubomgomo Yobumfihlo",
   andTerms: "kanye",
   termsOfService: "Imigomo Yesevisi",
-  notificationConsentOptional: "Ngiyavuma ukuthola i-SMS ne-imeyili ngomgca wami (okukhethwayo)",
+  notificationConsentOptional: "Ngiyavuma ukuthola izaziso zohlelo nezefoni ngomgca wami (okukhethwayo)",
   alreadyHaveAccount: "Usunayo i-akhawunti?",
   privacyModalTitle: "I-QFlow isebenzisa kanjani idatha yakho",
   privacyWhatWeCollect: "Okusikuthola:",
@@ -1166,7 +1275,22 @@ const zu = {
   privacyQueueHistoryRetention: "Umlando womgca: izinyanga eziyi-12",
   privacyAccountDataRetention: "Idatha ye-akhawunti: kuze ususe",
   privacyContact: "Xhumana:",
+  termsModalTitle: "Imigomo Yesevisi",
+  termsWhatYouAgree: "Uma usebenzisa i-QFlow, uyavuma ukuthi:",
+  termsUseForQueues: "Usebenzise uhlelo ngokufanele ukujoyina imigqa",
+  termsAccurateInfo: "Unikeze imininingwane eqondile ukuze abasebenzi bakusize",
+  termsRespectStaff: "Uphathe abasebenzi nabanye emgqeni ngenhlonipho",
+  termsOurCommitments: "Okuzibophezela kwe-QFlow:",
+  termsKeepServiceRunning: "Sigcine isevisi isebenza kahle ngangokunokwenzeka",
+  termsProtectPrivacy: "Sivikele ubumfihlo bakho ngaphansi kwe-POPIA",
+  termsFairAccess: "Sinikeze ukufinyelela okufanele ezindaweni zemigqa",
+  termsContact: "Imibuzo:",
   close: "Vala",
+  filterAll: "Bonisa zonke izindawo",
+  filterAvailable: "Bonisa izindawo ezinesikhala",
+  filterBusy: "Bonisa izindawo ezimatasa",
+  filterFull: "Bonisa izindawo ezigcwele",
+  openDirections: "Vula izinkomba",
 
   forgotPasswordTitle: "Ukhohlwe iphasiwedi",
   forgotPasswordDesc: "Faka i-imeyili yakho. Sizokuthumelela ikhodi eyodwa ukuze wenze iphasiwedi entsha.",
@@ -1321,7 +1445,7 @@ const st = {
   privacyPolicy: "Leano la Lekunutu",
   andTerms: "le",
   termsOfService: "Melao ea Tshebeletso",
-  notificationConsentOptional: "Ke lumela ho fumana SMS le imeile ka moleng oa ka (ka boikhethelo)",
+  notificationConsentOptional: "Ke lumela ho fumana litsebiso tsa app le fono ka moleng oa ka (ka boikhethelo)",
   alreadyHaveAccount: "O se u na le akhaonto?",
   privacyModalTitle: "QFlow e sebelisa joang data ea hao",
   privacyWhatWeCollect: "Se re bokellang:",
@@ -1340,7 +1464,22 @@ const st = {
   privacyQueueHistoryRetention: "Histori ea moleng: likhoeli tse 12",
   privacyAccountDataRetention: "Data ea akhaonto: ho fihlela u e hlakola",
   privacyContact: "Ikopanye:",
+  termsModalTitle: "Melao ea Tshebeletso",
+  termsWhatYouAgree: "Ha u sebelisa QFlow, u lumela ho:",
+  termsUseForQueues: "Sebelisa app ka toka ho kena meleng",
+  termsAccurateInfo: "Fana ka lintlha tse nepahetseng hore basebetsi ba u thuse",
+  termsRespectStaff: "Tšoara basebetsi le ba bang moleng ka tlhompho",
+  termsOurCommitments: "Seo QFlow e itlamang ka sona:",
+  termsKeepServiceRunning: "Boloka tšebeletso e sebetsa hantle kamoo ho ka khonehang",
+  termsProtectPrivacy: "Sireletsa lekunutu la hau tlas'a POPIA",
+  termsFairAccess: "Fana ka phihlello e nang le toka libakeng tsa meleng",
+  termsContact: "Lipotso:",
   close: "Koala",
+  filterAll: "Bontša libaka tsohle",
+  filterAvailable: "Bontša libaka tse nang le sebaka",
+  filterBusy: "Bontša libaka tse phathahaneng",
+  filterFull: "Bontša libaka tse tlatsitseng",
+  openDirections: "Bula litaelo",
 
   forgotPasswordTitle: "U lebetse password",
   forgotPasswordDesc: "Kenya imeile ea hao. Re tla u romella khoutu ea nako e le 'ngoe ho etsa password e ncha.",
@@ -1495,7 +1634,7 @@ const xh = {
   privacyPolicy: "Umthetho Wobumfihlo",
   andTerms: "kunye",
   termsOfService: "Imimmiselo Yeenkonzo",
-  notificationConsentOptional: "Ndiyavuma ukufumana i-SMS ne-imeyile ngomgca wam (ukhetho)",
+  notificationConsentOptional: "Ndiyavuma ukufumana izaziso zohlelo nezefowuni ngomgca wam (ukhetho)",
   alreadyHaveAccount: "Usunayo iakhawunti?",
   privacyModalTitle: "I-QFlow isebenzisa njani idatha yakho",
   privacyWhatWeCollect: "Okusikutholayo:",
@@ -1514,7 +1653,22 @@ const xh = {
   privacyQueueHistoryRetention: "Imbali yomgca: iinyanga eziyi-12",
   privacyAccountDataRetention: "Idatha yeakhawunti: de uyicime",
   privacyContact: "Qhagamshelana:",
+  termsModalTitle: "Imimmiselo Yeenkonzo",
+  termsWhatYouAgree: "Xa usebenzisa i-QFlow, uyavuma ukuba:",
+  termsUseForQueues: "Usebenzise i-app ngokufanelekileyo ukujoyina imigca",
+  termsAccurateInfo: "Unikeze iinkcukacha ezichanekileyo ukuze abasebenzi bakuncede",
+  termsRespectStaff: "Uphathe abasebenzi nabanye emgceni ngentlonipho",
+  termsOurCommitments: "Into i-QFlow ezibophelele kuyo:",
+  termsKeepServiceRunning: "Sigcine inkonzo isebenza kakuhle kangangoko kunokwenzeka",
+  termsProtectPrivacy: "Sikhusela ubumfihlo bakho phantsi kwe-POPIA",
+  termsFairAccess: "Sinikeze ukufikelela okufanelekileyo kwiindawo zemigca",
+  termsContact: "Imibuzo:",
   close: "Vala",
+  filterAll: "Bonisa zonke iindawo",
+  filterAvailable: "Bonisa iindawo ezinesithuba",
+  filterBusy: "Bonisa iindawo ezixakekileyo",
+  filterFull: "Bonisa iindawo ezigcweleyo",
+  openDirections: "Vula izikhombisi-ndlela",
 
   forgotPasswordTitle: "Ulibele igama lokugqitha",
   forgotPasswordDesc: "Ngenisa i-imeyile yakho. Siza kukuthumelela ikhowudi enye ukuze wenze igama lokugqitha elitsha.",
@@ -1669,7 +1823,7 @@ const tn = {
   privacyPolicy: "Pholisi ya Bosiamisi",
   andTerms: "le",
   termsOfService: "Melao ya Tirelo",
-  notificationConsentOptional: "Ke dumela go amogela SMS le imeile ka mola wa me (go tlhopha)",
+  notificationConsentOptional: "Ke dumela go amogela ditsebiso tsa app le founo ka mola wa me (go tlhopha)",
   alreadyHaveAccount: "O setse o na le akhaonto?",
   privacyModalTitle: "QFlow e dirisa jang data ya gago",
   privacyWhatWeCollect: "Se re bokellaneng:",
@@ -1688,7 +1842,22 @@ const tn = {
   privacyQueueHistoryRetention: "Histori ya mola: dikgwedi di le 12",
   privacyAccountDataRetention: "Data ya akhaonto: go fitlha o e phimola",
   privacyContact: "Ikgolaganye:",
+  termsModalTitle: "Melao ya Tirelo",
+  termsWhatYouAgree: "Fa o dirisa QFlow, o dumela go:",
+  termsUseForQueues: "Dirisa app ka tshiamo go tsena meleng",
+  termsAccurateInfo: "Neela dintlha tse nepagetseng gore badiri ba go thuse",
+  termsRespectStaff: "Tshwara badiri le ba bangwe mo moleng ka tlotlo",
+  termsOurCommitments: "Se QFlow e ikgatholang ka sona:",
+  termsKeepServiceRunning: "Boloka tirelo e dira sentle ka mo go kgonegang",
+  termsProtectPrivacy: "Sireletsa sephiri sa gago ka fa tlase ga POPIA",
+  termsFairAccess: "Neela phitlhelelo e e siameng kwa mafelong a meleng",
+  termsContact: "Dipotso:",
   close: "Tswala",
+  filterAll: "Bontsha mafelo otlhe",
+  filterAvailable: "Bontsha mafelo a a nang le sebaka",
+  filterBusy: "Bontsha mafelo a a pharakanyang",
+  filterFull: "Bontsha mafelo a a tletseng",
+  openDirections: "Bula ditaelo",
 
   forgotPasswordTitle: "O lebetse password",
   forgotPasswordDesc: "Tsenya imeile ya gago. Re tla go romela khoutu ya nako e le nngwe go dira password e ntšha.",

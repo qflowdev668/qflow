@@ -33,9 +33,11 @@ export function RegisterScreen() {
   const [privacyConsent, setPrivacyConsent] = useState(false)
   const [notificationConsent, setNotificationConsent] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
+  const [showTermsModal, setShowTermsModal] = useState(false)
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting || isAuthLoading) return
     clearAuthError()
     setPasswordError(null)
 
@@ -177,6 +179,7 @@ export function RegisterScreen() {
                 {t.agreeToThe}{" "}
                 <button
                   type="button"
+                  aria-label={t.privacyPolicy}
                   onClick={(e) => { e.preventDefault(); setShowPrivacyModal(true) }}
                   className="text-primary underline hover:text-primary/80"
                 >
@@ -185,7 +188,8 @@ export function RegisterScreen() {
                 {" "}{t.andTerms}{" "}
                 <button
                   type="button"
-                  onClick={(e) => e.preventDefault()}
+                  aria-label={t.termsOfService}
+                  onClick={(e) => { e.preventDefault(); setShowTermsModal(true) }}
                   className="text-primary underline hover:text-primary/80"
                 >
                   {t.termsOfService}
@@ -222,7 +226,7 @@ export function RegisterScreen() {
             "w-full h-12 text-base font-semibold transition-opacity",
             !privacyConsent && "opacity-50 cursor-not-allowed"
           )}
-          disabled={isAuthLoading || isSubmitting || !privacyConsent || !isStrongPassword(password)}
+          disabled={isSubmitting || !privacyConsent || !isStrongPassword(password)}
         >
           {isSubmitting ? t.creatingAccount : t.createAccount}
         </Button>
@@ -241,8 +245,11 @@ export function RegisterScreen() {
             type="button"
             variant="outline"
             className="w-full h-12 text-base font-medium"
-            onClick={loginWithGoogle}
-            disabled={isAuthLoading || isSubmitting}
+            onClick={() => {
+              if (isAuthLoading || isSubmitting) return
+              loginWithGoogle()
+            }}
+            disabled={isSubmitting}
           >
             {t.continueWithGoogle}
           </Button>
@@ -252,10 +259,11 @@ export function RegisterScreen() {
             variant="outline"
             className="w-full h-12 text-base font-medium"
             onClick={() => {
+              if (isSubmitting) return
               clearAuthError()
               navigateTo("email-otp")
             }}
-            disabled={isAuthLoading || isSubmitting}
+            disabled={isSubmitting}
           >
             <Mail className="w-5 h-5 mr-2" />
             {t.continueWithEmailCode}
@@ -334,6 +342,57 @@ export function RegisterScreen() {
               <Button
                 variant="outline"
                 onClick={() => setShowPrivacyModal(false)}
+                className="w-full h-12 text-base font-medium"
+              >
+                {t.close}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTermsModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="w-full bg-card rounded-t-2xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-lg font-bold text-foreground">{t.termsModalTitle}</h2>
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
+                className="p-1 hover:bg-muted rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">{t.termsWhatYouAgree}</h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>{t.termsUseForQueues}</li>
+                  <li>{t.termsAccurateInfo}</li>
+                  <li>{t.termsRespectStaff}</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">{t.termsOurCommitments}</h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>{t.termsKeepServiceRunning}</li>
+                  <li>{t.termsProtectPrivacy}</li>
+                  <li>{t.termsFairAccess}</li>
+                </ul>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                {t.termsContact} <span className="text-primary">support@qflow.co.za</span>
+              </p>
+            </div>
+
+            <div className="px-6 py-4 border-t border-border">
+              <Button
+                variant="outline"
+                onClick={() => setShowTermsModal(false)}
                 className="w-full h-12 text-base font-medium"
               >
                 {t.close}

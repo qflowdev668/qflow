@@ -14,6 +14,8 @@ export function AdminPhoneOtpScreen() {
   const [phone, setPhone] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Google OAuth is intentionally omitted on /login/admin (cellphone OTP only).
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearAuthError()

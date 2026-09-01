@@ -3,7 +3,8 @@
 import { useApp } from "@/lib/app-context"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, XCircle, Clock, User, AlertTriangle, Shield, Zap, ShieldCheck, X, Timer } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, startTransition } from "react"
+import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { fmt, useT } from "@/hooks/use-t"
 
@@ -29,12 +30,15 @@ const proofFor = (category: string, fallback: string) =>
   fallback
 
 export function StaffServingScreen() {
-  const { currentlyServing, completeService, skipNoShow, demoteToStandard, navigateTo } = useApp()
+  const { currentlyServing, completeService, skipNoShow, demoteToStandard, refreshStaffQueue } = useApp()
+  const router = useRouter()
   const t = useT()
   const [elapsedTime, setElapsedTime] = useState(0)
   const [isVerified, setIsVerified] = useState(false)
   const [showMoveDialog, setShowMoveDialog] = useState(false)
   const [showToast, setShowToast] = useState(false)
+  const [queueChecked, setQueueChecked] = useState(() => !!currentlyServing)
+  const redirectedRef = useRef(false)
   
   // No-show timer state
   const [customerArrived, setCustomerArrived] = useState(false)
@@ -67,6 +71,26 @@ export function StaffServingScreen() {
     return () => clearInterval(timer)
   }, [customerArrived, noShowCountdown])
 
+  useEffect(() => {
+    if (currentlyServing) {
+      redirectedRef.current = false
+      setQueueChecked(true)
+      return
+    }
+    void (async () => {
+      await refreshStaffQueue()
+      setQueueChecked(true)
+    })()
+  }, [refreshStaffQueue, currentlyServing])
+
+  useEffect(() => {
+    if (!queueChecked || currentlyServing || redirectedRef.current) return
+    redirectedRef.current = true
+    startTransition(() => {
+      router.replace("/staff")
+    })
+  }, [queueChecked, currentlyServing, router])
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -96,8 +120,7 @@ export function StaffServingScreen() {
     setCustomerArrived(true)
   }
 
-  if (!currentlyServing) {
-    navigateTo("staff-dashboard")
+  if (!queueChecked || !currentlyServing) {
     return null
   }
 

@@ -29,6 +29,7 @@ export function StaffDashboardScreen() {
     locations,
     lastSyncedAt,
     refreshLocations,
+    refreshStaffQueue,
   } = useApp()
   const t = useT()
   const isOffline = useOfflineStatus()
@@ -75,6 +76,22 @@ export function StaffDashboardScreen() {
     setTimeout(() => {
       logout()
     }, 2000)
+  }
+
+  const handleExportManualLog = () => {
+    const header = "ticket,status,time\n"
+    const rows = manualLog
+      .map((entry) => `${String(entry.number).padStart(3, "0")},${entry.status},${entry.time}`)
+      .join("\n")
+    const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `qflow-manual-log-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
   }
   
   // Calculate break end time
@@ -133,7 +150,7 @@ export function StaffDashboardScreen() {
   const handleRetryConnection = async () => {
     setIsRetrying(true)
     try {
-      await refreshLocations()
+      await Promise.all([refreshLocations(), refreshStaffQueue()])
     } finally {
       setIsRetrying(false)
     }
@@ -166,13 +183,13 @@ export function StaffDashboardScreen() {
     priorityNow: priorityQueue.length,
   }
 
-  const handleAddWalkIn = (customer: {
+  const handleAddWalkIn = async (customer: {
     name: string
     priorityType: PriorityType
     priorityCategory?: string
     notes?: string
   }) => {
-    addWalkIn({
+    return addWalkIn({
       name: customer.name,
       waitDuration: 0,
       isWalkIn: true,
@@ -387,6 +404,7 @@ export function StaffDashboardScreen() {
           <Button
             variant="outline"
             className="w-full h-11 border-[#2563EB] text-[#2563EB] hover:bg-blue-50"
+            onClick={handleExportManualLog}
           >
             {t.exportManualLogWhenOnline}
           </Button>

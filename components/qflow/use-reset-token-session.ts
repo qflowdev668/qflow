@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { apiFetch } from "@/lib/api-client"
 
 type ResetSession = {
   email: string
@@ -29,7 +30,9 @@ export function useResetTokenSession() {
     setLoading(true)
     void (async () => {
       try {
-        const res = await fetch(`/api/auth/reset/session?rt=${encodeURIComponent(rt)}`)
+        const res = await apiFetch(`/api/auth/reset/session?rt=${encodeURIComponent(rt)}`, {
+          public: true,
+        })
         const data = (await res.json().catch(() => ({}))) as {
           email?: string
           stage?: "otp_sent" | "verified"

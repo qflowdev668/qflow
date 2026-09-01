@@ -1,13 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
+import { UserScreenLayout } from "@/components/qflow/user-screen-layout"
+import { EmptyQueueScene } from "@/components/qflow/illustrations/queue-scenes"
 import { useOfflineStatus } from "@/components/qflow/offline-banner"
 import { Button } from "@/components/ui/button"
 import { AVG_SERVICE_MINUTES, ACTIVE_STAFF } from "@/lib/supabase/helpers"
-import { MapPin, Clock, AlertCircle, Building2, XCircle, WifiOff } from "lucide-react"
+import { MapPin, Clock, AlertCircle, Building2, XCircle, WifiOff, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const isToday = (date: Date) => {
@@ -26,6 +28,15 @@ export function MyQueueScreen() {
   const [showOfflineTooltip, setShowOfflineTooltip] = useState(false)
   const [simpleViewActive, setSimpleViewActive] = useState(false)
   const [noShowDismissed, setNoShowDismissed] = useState(false)
+  const [pushGranted, setPushGranted] = useState(true)
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setPushGranted(false)
+      return
+    }
+    setPushGranted(Notification.permission === "granted")
+  }, [])
 
   const isLargeText = accessibility.textSize === "large" || accessibility.textSize === "x-large"
 
@@ -96,26 +107,19 @@ export function MyQueueScreen() {
 
   if (!activeQueue) {
     return (
-      <div className="min-h-screen bg-background flex flex-col pb-20">
-        <header className="sticky top-0 z-40 bg-card border-b border-border px-4 py-4">
-                  <h1 className="text-xl font-bold text-foreground">{t.myQueue}</h1>
-        </header>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-8">
-          <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
-            <Clock className="w-12 h-12 text-muted-foreground" />
-          </div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">{t.noActiveQueue}</h2>
-          <p className="text-muted-foreground text-center mb-6">
-            {t.noActiveQueueHint}
-          </p>
-          <Button onClick={() => navigateTo("home")} className="px-8">
-            {t.findALocation}
-          </Button>
-        </div>
-
+      <>
+        <UserScreenLayout
+          illustration={<EmptyQueueScene className="w-full h-auto" />}
+          title={t.noActiveQueue}
+          subtitle={t.noActiveQueueHint}
+          footer={
+            <Button onClick={() => navigateTo("home")} className="w-full h-14 text-base font-bold rounded-2xl">
+              {t.findALocation}
+            </Button>
+          }
+        />
         <BottomNav />
-      </div>
+      </>
     )
   }
 
@@ -154,6 +158,18 @@ export function MyQueueScreen() {
           </p>
         </div>
       </div>
+
+      {!pushGranted && (
+        <div
+          className="sticky top-0 z-30 bg-amber-50 border-b border-amber-300 px-4 py-3"
+          role="status"
+        >
+          <div className="flex items-start gap-2.5">
+            <Bell className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-900 leading-relaxed">{t.keepTabOpenForTurn}</p>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="px-4 py-6">
@@ -308,13 +324,16 @@ export function MyQueueScreen() {
           )}
         </div>
 
-        {/* Switch to Simple View Button */}
-        <button
+        <Button
+          type="button"
           onClick={() => setSimpleViewActive(true)}
-          className="w-full text-center text-sm text-gray-500 underline py-4"
+          className={cn(
+            "w-full mt-3 text-base font-semibold rounded-xl",
+            isLargeText ? "h-16 text-lg" : "h-14"
+          )}
         >
           {t.switchToSimpleView}
-        </button>
+        </Button>
       </div>
 
       <BottomNav />
@@ -340,27 +359,30 @@ function SimpleQueueView({
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center px-6">
       <div className="flex-1 flex flex-col items-center justify-center">
-        <p className="text-sm text-gray-500 tracking-widest uppercase mb-4">{t.yourNumber}</p>
-        <p className="text-[96px] font-bold text-black leading-none mb-6">#{position}</p>
-        <p className="text-2xl font-bold text-black mb-4">
+        <p className="text-sm text-muted-foreground tracking-widest uppercase mb-4">{t.yourNumber}</p>
+        <p className="text-[96px] font-bold text-foreground leading-none mb-6">#{position}</p>
+        <p className="text-2xl font-bold text-foreground mb-4">
           {t.waitLabel}: {waitTime} {t.minutes}
         </p>
-        <p className="text-base text-gray-600">{locationName}</p>
+        <p className="text-base text-muted-foreground">{locationName}</p>
       </div>
 
-      <div className="w-full pb-8">
-        <button
+      <div className="w-full pb-8 space-y-3">
+        <Button
+          type="button"
           onClick={onLeave}
-          className="w-full h-16 bg-black text-white text-xl font-semibold rounded-2xl mb-6"
+          className="w-full h-16 bg-foreground text-background text-xl font-semibold rounded-2xl hover:bg-foreground/90"
         >
           {t.leaveQueue.toUpperCase()}
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
           onClick={onSwitchToNormal}
-          className="w-full text-center text-sm text-gray-500 underline"
+          className="w-full h-14 text-base font-semibold rounded-xl border-2"
         >
           {t.switchToNormalView}
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  startTransition,
   ReactNode,
 } from "react"
 import { usePathname, useRouter } from "next/navigation"
@@ -28,6 +29,7 @@ import {
 } from "@/lib/supabase/helpers"
 import {
   clearLastRoute,
+  isPublicPath,
   pathAllowedForRole,
   pathForScreen,
   readLastRoute,
@@ -35,6 +37,28 @@ import {
 } from "@/lib/routes"
 import { validateStrongPassword } from "@/lib/password"
 import { dispatchQueuePush } from "@/lib/push-client"
+import { formatSANumber } from "@/lib/sms-format"
+import { notificationBody } from "@/lib/notification-templates"
+import {
+  fetchProfileRole,
+  privilegedGoogleBlockMessage,
+  privilegedGoogleLoginScreen,
+  signOutIfPrivilegedGoogle,
+} from "@/lib/privileged-session-guard"
+import { apiFetch, formatApiErrorMessage } from "@/lib/api-client"
+import { onSessionExpiresInHeader } from "@/lib/session-expiry-signal"
+import {
+  clearAdminOtpConfirmed,
+  clearOtpLoginFlow,
+  clearStaffOtpConfirmed,
+  isAdminOtpConfirmedInSession,
+  isStaffOtpConfirmedInSession,
+  markAdminOtpConfirmed,
+  markStaffOtpConfirmed,
+  readOtpLoginFlow,
+  setOtpLoginFlow,
+  type OtpLoginFlow,
+} from "@/lib/privileged-login-confirmation"
 
 const supabaseEnabled = isSupabaseConfigured()
 
@@ -68,6 +92,8 @@ export interface User {
   role: UserRole
   avatar?: string
   locationId?: string | null
+  cellNumber?: string | null
+  smsNotifications?: boolean
 }
 
 export interface Location {
@@ -94,6 +120,8 @@ export interface QueueEntry {
   estimatedWait: number
   status: QueueStatus
   joinedAt: Date
+  priorityType: PriorityType
+  priorityCategory?: string
 }
 
 export interface Notification {
@@ -187,7 +215,10 @@ interface AppContextType {
 
   // Queue
   activeQueue: QueueEntry | null
-  joinQueue: (location: Location, priority?: { type: PriorityType; category?: string }) => void
+  joinQueue: (
+    location: Location,
+    priority?: { type: PriorityType; category?: string }
+  ) => Promise<boolean>
   leaveQueue: () => void
 
   // Staff
@@ -201,9 +232,12 @@ interface AppContextType {
   toggleBreak: () => void
   locationQueue: StaffQueueItem[]
   walkIns: StaffQueueItem[]
-  addWalkIn: (item: Omit<StaffQueueItem, "id" | "position"> & { notes?: string }) => void
+  addWalkIn: (
+    item: Omit<StaffQueueItem, "id" | "position"> & { notes?: string }
+  ) => Promise<{ id: string; position: number } | { error: string }>
   staffLocationName: string | null
   shiftSummary: ShiftSummary
+  refreshStaffQueue: () => Promise<void>
   pendingVisitRating: PendingVisitRating | null
   refreshPendingRating: () => Promise<PendingVisitRating | null>
   submitVisitRating: (rating: number, comment: string) => Promise<boolean>
@@ -217,9 +251,15 @@ interface AppContextType {
   refreshLocations: () => Promise<void>
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
-  exportMyData: () => void
-  clearQueueHistory: () => Promise<void>
-  updateProfile: (updates: { name: string }) => Promise<boolean>
+  exportMyData: () => Promise<void>
+  clearQueueHistory: () => Promise<boolean>
+  updateProfile: (
+    updates: {
+      name?: string
+      cellNumber?: string | null
+      smsNotifications?: boolean
+    }
+  ) => Promise<boolean>
 
   // Admin
   addLocation: (location: Omit<Location, "id">) => void
@@ -260,6 +300,28 @@ const historyStatusFromDb = (
   return "completed"
 }
 
+type StaffServingApiPayload = {
+  id: string
+  ticketNumber: string
+  waitTime: number
+  customerName: string
+  priorityType: PriorityType
+  priorityCategory?: string
+  isWalkIn: boolean
+  next: { ticketNumber: string; waitTime: number } | null
+}
+
+const servingFromApi = (payload: StaffServingApiPayload): ServingCustomer => ({
+  id: payload.id,
+  ticketNumber: payload.ticketNumber,
+  waitTime: payload.waitTime,
+  customerName: payload.customerName,
+  priorityType: payload.priorityType,
+  priorityCategory: payload.priorityCategory,
+  isWalkIn: payload.isWalkIn,
+  next: payload.next,
+})
+
 const NOTIFICATION_ICONS: Notification["icon"][] = ["queue", "turn", "feedback", "info"]
 
 function asNotificationIcon(icon: string): Notification["icon"] {
@@ -288,10 +350,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [queueHistory, setQueueHistory] = useState<QueueHistoryItem[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(() => {
-    if (typeof window === "undefined") return false
-    return window.localStorage.getItem("qflow_onboarding_done") === "1"
-  })
+  // Default false/"en" on server + first client paint to avoid hydration mismatches.
+  // localStorage is applied in an effect below.
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false)
   const [currentlyServing, setCurrentlyServing] = useState<ServingCustomer | null>(null)
   const [isOnBreak, setIsOnBreak] = useState(false)
   const [locationQueue, setLocationQueue] = useState<StaffQueueItem[]>([])
@@ -303,12 +364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     queueRemaining: 0,
   })
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null)
-  const [language, setLanguageState] = useState<Language>(() => {
-    if (typeof window === "undefined") return "en"
-    const saved = window.localStorage.getItem("qflow_language")
-    const allowed: Language[] = ["en", "af", "zu", "st", "xh", "tn"]
-    return allowed.includes(saved as Language) ? (saved as Language) : "en"
-  })
+  const [language, setLanguageState] = useState<Language>("en")
   const [accessibility, setAccessibility] = useState<AccessibilitySettings>({
     textSize: "normal",
     highContrast: false,
@@ -322,9 +378,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Refresh of an existing session is allowed.
   const staffOtpConfirmed = useRef(false)
   const adminOtpConfirmed = useRef(false)
+  const emailOtpVerifyInFlight = useRef(false)
+  const privilegedLoginInProgress = useRef(false)
   const currentUserRef = useRef<User | null>(null)
+  const pathnameRef = useRef(pathname)
+
+  const confirmStaffOtp = () => {
+    staffOtpConfirmed.current = true
+    markStaffOtpConfirmed()
+  }
+
+  const revokeStaffOtp = () => {
+    staffOtpConfirmed.current = false
+    clearStaffOtpConfirmed()
+  }
+
+  const staffOtpIsConfirmed = () => {
+    if (staffOtpConfirmed.current) return true
+    if (isStaffOtpConfirmedInSession()) {
+      staffOtpConfirmed.current = true
+      return true
+    }
+    return false
+  }
+
+  const confirmAdminOtp = () => {
+    adminOtpConfirmed.current = true
+    markAdminOtpConfirmed()
+  }
+
+  const revokeAdminOtp = () => {
+    adminOtpConfirmed.current = false
+    clearAdminOtpConfirmed()
+  }
+
+  const adminOtpIsConfirmed = () => {
+    if (adminOtpConfirmed.current) return true
+    if (isAdminOtpConfirmedInSession()) {
+      adminOtpConfirmed.current = true
+      return true
+    }
+    return false
+  }
 
   currentUserRef.current = currentUser
+  pathnameRef.current = pathname
   const selectedLocationRef = useRef(selectedLocation)
   selectedLocationRef.current = selectedLocation
 
@@ -342,7 +440,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let path = pathForScreen(allowed, selectedLocationRef.current?.id)
       const blocked = pathAllowedForRole(path, currentUserRef.current?.role)
       if (blocked) path = blocked
-      router.push(path)
+      startTransition(() => {
+        router.push(path)
+      })
     },
     [router]
   )
@@ -353,17 +453,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const goToRoleHome = useCallback(
-    (role: UserRole) => {
+    (role: UserRole, force = false) => {
       // Recovery / reset routes own navigation via ?rt= — do not bounce to role home.
       if (typeof window !== "undefined") {
         const path = window.location.pathname
         if (path.startsWith("/forgot-password")) return
+
+        // After session_expired → re-login, restore the page the user was on
+        // when the API rejected the expired JWT (role-checked).
+        const returnUrl = new URLSearchParams(window.location.search).get("returnUrl")
+        if (
+          returnUrl &&
+          returnUrl.startsWith("/") &&
+          !returnUrl.startsWith("//")
+        ) {
+          const destPath = returnUrl.split("?")[0] || "/"
+          if (!pathAllowedForRole(destPath, role)) {
+            startTransition(() => {
+              router.push(returnUrl)
+            })
+            return
+          }
+        }
       }
-      if (PRE_AUTH_SCREENS.includes(screenFromPath(pathname))) {
+      const onPreAuth =
+        force ||
+        PRE_AUTH_SCREENS.includes(screenFromPath(pathnameRef.current))
+      if (onPreAuth) {
         navigateTo(screenForRole(role))
       }
     },
-    [navigateTo, pathname]
+    [navigateTo, router]
   )
 
   const loadLocations = useCallback(async () => {
@@ -385,7 +505,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const { data } = await supabase
         .from("profiles")
-        .select("id, name, email, role, location_id, avatar_url, language")
+        .select(
+          "id, name, email, role, location_id, avatar_url, language, cell_number, sms_notifications"
+        )
         .eq("id", userId)
         .maybeSingle()
 
@@ -396,6 +518,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         role: (data?.role as UserRole) ?? "user",
         avatar: data?.avatar_url ?? undefined,
         locationId: data?.location_id ?? null,
+        cellNumber: data?.cell_number ?? null,
+        smsNotifications: data?.sms_notifications === true,
       }
 
       if (data?.language) {
@@ -474,42 +598,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadPendingRating = useCallback(async (userId: string) => {
     if (!supabase) return null
 
-    const { data: served, error: servedError } = await supabase
-      .from("queue_entries")
-      .select("id, location_id, locations(name)")
-      .eq("user_id", userId)
-      .eq("status", "served")
-      .not("served_at", "is", null)
-      .order("served_at", { ascending: false })
-      .limit(8)
-
-    if (servedError || !served?.length) {
+    const { findRateableVisit } = await import("@/lib/visit-rating")
+    const visit = await findRateableVisit(supabase, userId)
+    if (!visit) {
       setPendingVisitRating(null)
       return null
     }
 
-    const { data: rated } = await supabase
-      .from("visit_ratings")
-      .select("queue_entry_id")
-      .in(
-        "queue_entry_id",
-        served.map((row) => row.id)
-      )
-
-    const ratedIds = new Set(
-      (rated ?? []).map((row) => row.queue_entry_id).filter(Boolean)
-    )
-    const next = served.find((row) => !ratedIds.has(row.id))
-    if (!next) {
-      setPendingVisitRating(null)
-      return null
-    }
-
-    const loc = next.locations as unknown as { name: string } | null
     const pending: PendingVisitRating = {
-      queueEntryId: next.id,
-      locationId: next.location_id,
-      locationName: loc?.name ?? "Location",
+      queueEntryId: visit.queueEntryId,
+      locationId: visit.locationId,
+      locationName: visit.locationName,
     }
     setPendingVisitRating(pending)
     return pending
@@ -537,92 +636,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase])
 
-  // Staff view of their own location's queue. RLS already restricts this to the
-  // staff member's location, but the filter keeps admins from seeing everything.
-  const loadLocationQueue = useCallback(
-    async (locationId: string) => {
-      if (!supabase) return
+  // Staff view of their own location's queue (server API bypasses client RLS gaps).
+  const refreshStaffQueue = useCallback(async () => {
+    if (!currentUser?.locationId || isDemoUser.current) {
+      setLocationQueue([])
+      setShiftSummary({
+        customersServed: 0,
+        noShows: 0,
+        avgServiceTime: null,
+        queueRemaining: 0,
+      })
+      return
+    }
 
-      const { data } = await supabase
-        .from("queue_entries")
-        .select("id, position, joined_at, priority, priority_category, is_walk_in, walk_in_name, walk_in_notes, profiles(name)")
-        .eq("location_id", locationId)
-        .in("status", ["waiting", "almost"])
-        .order("position")
-
-      if (!data) return
-
-      setLocationQueue(
-        data.map((entry) => {
-          const profile = entry.profiles as unknown as { name: string } | null
-          const isWalkIn = entry.is_walk_in === true
-          return {
-            id: entry.id,
-            position: entry.position,
-            name: isWalkIn
-              ? (entry.walk_in_name ?? "Walk-in")
-              : (profile?.name ?? "Customer"),
-            waitDuration: minutesSince(entry.joined_at),
-            isWalkIn,
-            priorityType: entry.priority ?? "standard",
-            priorityCategory: entry.priority_category ?? undefined,
-            hasSpecialNeeds: Boolean(entry.walk_in_notes),
-          }
-        })
-      )
+    try {
+      const res = await apiFetch("/api/staff/queue", { cache: "no-store" })
+      const data = (await res.json().catch(() => ({}))) as {
+        entries?: StaffQueueItem[]
+        summary?: ShiftSummary
+        currentlyServing?: StaffServingApiPayload | null
+      }
+      if (!res.ok) return
+      if (data.entries) setLocationQueue(data.entries)
+      if (data.summary) setShiftSummary(data.summary)
+      if ("currentlyServing" in data) {
+        setCurrentlyServing(
+          data.currentlyServing ? servingFromApi(data.currentlyServing) : null
+        )
+      }
       setLastSyncedAt(new Date())
+    } catch {
+      // Keep the last known queue on transient network errors.
+    }
+  }, [currentUser])
+
+  const loadLocationQueue = useCallback(
+    async (_locationId: string) => {
+      await refreshStaffQueue()
     },
-    [supabase]
+    [refreshStaffQueue]
   )
 
   const loadShiftSummary = useCallback(
-    async (locationId: string) => {
-      if (!supabase) return
-
-      const since = startOfToday()
-
-      const [servedResult, noShowResult, waitingResult] = await Promise.all([
-        supabase
-          .from("queue_entries")
-          .select("joined_at, served_at")
-          .eq("location_id", locationId)
-          .eq("status", "served")
-          .gte("served_at", since),
-        supabase
-          .from("queue_entries")
-          .select("id")
-          .eq("location_id", locationId)
-          .eq("status", "no-show")
-          .gte("served_at", since),
-        supabase
-          .from("queue_entries")
-          .select("id")
-          .eq("location_id", locationId)
-          .in("status", ["waiting", "almost", "your-turn"]),
-      ])
-
-      const served = servedResult.data ?? []
-      const durations = served
-        .filter((row) => row.served_at)
-        .map(
-          (row) =>
-            (new Date(row.served_at!).getTime() -
-              new Date(row.joined_at).getTime()) /
-            60000
-        )
-
-      setShiftSummary({
-        customersServed: served.length,
-        noShows: noShowResult.data?.length ?? 0,
-        avgServiceTime: durations.length
-          ? Math.round(
-              (durations.reduce((sum, d) => sum + d, 0) / durations.length) * 10
-            ) / 10
-          : null,
-        queueRemaining: waitingResult.data?.length ?? 0,
-      })
+    async (_locationId: string) => {
+      await refreshStaffQueue()
     },
-    [supabase]
+    [refreshStaffQueue]
   )
 
   const loadUserData = useCallback(
@@ -655,6 +714,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void loadLocations()
   }, [loadLocations])
 
+  // Restore tab-scoped OTP flags before auth listeners run (avoids post-login sign-out races).
+  useEffect(() => {
+    if (isStaffOtpConfirmedInSession()) staffOtpConfirmed.current = true
+    if (isAdminOtpConfirmedInSession()) adminOtpConfirmed.current = true
+  }, [])
+
+  // Apply persisted prefs after mount so SSR HTML matches the first client render.
+  useEffect(() => {
+    const savedLang = window.localStorage.getItem("qflow_language")
+    const allowed: Language[] = ["en", "af", "zu", "st", "xh", "tn"]
+    if (allowed.includes(savedLang as Language)) {
+      setLanguageState(savedLang as Language)
+    }
+    if (window.localStorage.getItem("qflow_onboarding_done") === "1") {
+      setHasCompletedOnboarding(true)
+    }
+  }, [])
+
   // Surface OAuth errors from /auth/callback
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -675,8 +752,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false
 
-    const rejectFreshPrivilegedSignIn = async (profile: User) => {
-      if (profile.role === "staff" && !staffOtpConfirmed.current) {
+    const rejectFreshPrivilegedSignIn = async (
+      authUser: NonNullable<Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"]>,
+      profile: User
+    ) => {
+      if (privilegedLoginInProgress.current) return false
+
+      if (profile.role === "staff" && staffOtpIsConfirmed()) return false
+      if (profile.role === "admin" && adminOtpIsConfirmed()) return false
+
+      if (
+        await signOutIfPrivilegedGoogle(supabase, authUser, profile.role, {
+          respectOtpBypass: true,
+        })
+      ) {
+        setCurrentUser(null)
+        setAuthError(privilegedGoogleBlockMessage(profile.role as "staff" | "admin"))
+        navigateTo(privilegedGoogleLoginScreen(profile.role as "staff" | "admin"))
+        return true
+      }
+
+      if (profile.role === "staff" && !staffOtpIsConfirmed()) {
         await supabase.auth.signOut()
         setCurrentUser(null)
         setAuthError(
@@ -685,7 +781,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         navigateTo("staff-login")
         return true
       }
-      if (profile.role === "admin" && !adminOtpConfirmed.current) {
+      if (profile.role === "admin" && !adminOtpIsConfirmed()) {
         await supabase.auth.signOut()
         setCurrentUser(null)
         setAuthError("Admins must sign in with cellphone number, then the email code.")
@@ -712,17 +808,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        const role = await fetchProfileRole(supabase, data.user.id)
+        if (
+          !cancelled &&
+          (await signOutIfPrivilegedGoogle(supabase, data.user, role, {
+            respectOtpBypass: true,
+          }))
+        ) {
+          setCurrentUser(null)
+          if (role === "staff" || role === "admin") {
+            setAuthError(privilegedGoogleBlockMessage(role))
+            navigateTo(privilegedGoogleLoginScreen(role))
+          }
+          if (!cancelled) setIsAuthLoading(false)
+          return
+        }
+
         const profile = await loadProfile(
           data.user.id,
           data.user.email ?? "",
           (data.user.user_metadata?.name as string) ||
             (data.user.user_metadata?.full_name as string)
         )
-        // Existing sessions (including staff after OTP) are allowed on refresh.
         if (!cancelled && profile) {
           isDemoUser.current = false
-          if (profile.role === "staff") staffOtpConfirmed.current = true
-          if (profile.role === "admin") adminOtpConfirmed.current = true
+          if (profile.role === "staff") confirmStaffOtp()
+          if (profile.role === "admin") confirmAdminOtp()
           await loadUserData(data.user.id)
           goToRoleHome(profile.role)
         }
@@ -743,8 +854,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (event === "SIGNED_OUT") {
-          staffOtpConfirmed.current = false
-          adminOtpConfirmed.current = false
+          if (!privilegedLoginInProgress.current) {
+            window.setTimeout(() => {
+              if (privilegedLoginInProgress.current) return
+              void supabase.auth.getSession().then(({ data: sessionData }) => {
+                if (sessionData.session) return
+                revokeStaffOtp()
+                revokeAdminOtp()
+                clearOtpLoginFlow()
+              })
+            }, 150)
+          }
           setCurrentUser(null)
           setActiveQueue(null)
           setNotifications([])
@@ -754,7 +874,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             typeof window !== "undefined" &&
             window.location.pathname.startsWith("/forgot-password")
           if (!isDemoUser.current && !onReset) {
-            if (!PRE_AUTH_SCREENS.includes(screenFromPath(pathname))) {
+            if (!PRE_AUTH_SCREENS.includes(screenFromPath(pathnameRef.current))) {
               navigateTo("login")
             }
           }
@@ -781,6 +901,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             isDemoUser.current = false
             void (async () => {
+              if (privilegedLoginInProgress.current) return
+
+              const role = await fetchProfileRole(supabase, user.id)
+              if (
+                await signOutIfPrivilegedGoogle(supabase, user, role, {
+                  respectOtpBypass: true,
+                })
+              ) {
+                setCurrentUser(null)
+                if (role === "staff" || role === "admin") {
+                  setAuthError(privilegedGoogleBlockMessage(role))
+                  navigateTo(privilegedGoogleLoginScreen(role))
+                }
+                return
+              }
+
               const profile = await loadProfile(
                 user.id,
                 user.email ?? "",
@@ -788,9 +924,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   (user.user_metadata?.full_name as string)
               )
               if (cancelled || !profile) return
-              if (isFreshSignIn && (await rejectFreshPrivilegedSignIn(profile))) return
-              if (profile.role === "staff") staffOtpConfirmed.current = true
-              if (profile.role === "admin") adminOtpConfirmed.current = true
+              if (isFreshSignIn && (await rejectFreshPrivilegedSignIn(user, profile))) return
+              if (profile.role === "staff") confirmStaffOtp()
+              if (profile.role === "admin") confirmAdminOtp()
               await loadUserData(user.id)
               if (cancelled) return
               if (shouldAudit && profile.role === "admin") {
@@ -812,7 +948,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cancelled = true
       subscription.subscription.unsubscribe()
     }
-  }, [supabase, loadProfile, loadUserData, goToRoleHome, navigateTo, pathname, router])
+  }, [supabase, loadProfile, loadUserData, goToRoleHome, navigateTo, router])
+
+  // Client route guard (static export has no Edge proxy): after auth resolves,
+  // bounce anonymous users off protected paths and enforce role homes.
+  useEffect(() => {
+    if (isAuthLoading) return
+    if (typeof window === "undefined") return
+
+    const path = pathname.split("?")[0] || "/"
+    if (isPublicPath(path)) return
+
+    if (!currentUser) {
+      const returnUrl = `${window.location.pathname}${window.location.search}`
+      const params = new URLSearchParams()
+      if (returnUrl && returnUrl !== "/login" && !returnUrl.startsWith("/login?")) {
+        params.set("returnUrl", returnUrl)
+      }
+      const qs = params.toString()
+      startTransition(() => {
+        router.replace(qs ? `/login?${qs}` : "/login")
+      })
+      return
+    }
+
+    const blocked = pathAllowedForRole(path, currentUser.role)
+    if (blocked) {
+      startTransition(() => {
+        router.replace(blocked)
+      })
+    }
+  }, [isAuthLoading, currentUser, pathname, router])
 
   // Realtime: queue movements, location busyness, and new notifications
   useEffect(() => {
@@ -877,8 +1043,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    void loadLocationQueue(staffLocationId)
-    void loadShiftSummary(staffLocationId)
+    void refreshStaffQueue()
 
     const channel = supabase
       .channel(`qflow-location-${staffLocationId}`)
@@ -891,8 +1056,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           filter: `location_id=eq.${staffLocationId}`,
         },
         () => {
-          void loadLocationQueue(staffLocationId)
-          void loadShiftSummary(staffLocationId)
+          void refreshStaffQueue()
         }
       )
       .subscribe()
@@ -900,7 +1064,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [supabase, staffLocationId, loadLocationQueue, loadShiftSummary])
+  }, [supabase, staffLocationId, refreshStaffQueue])
 
   // Mirror the real access-token lifetime so the session banner is truthful
   useEffect(() => {
@@ -925,6 +1089,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => subscription.subscription.unsubscribe()
   }, [supabase])
+
+  // FastAPI ``X-Session-Expires-In`` (set on Bearer responses) keeps the banner
+  // aligned with the JWT the API actually accepted — no Edge proxy.ts.
+  useEffect(() => {
+    onSessionExpiresInHeader((expiresInSeconds) => {
+      setSessionExpiresAt(new Date(Date.now() + expiresInSeconds * 1000))
+    })
+    return () => onSessionExpiresInHeader(null)
+  }, [])
 
   const refreshSession = useCallback(async () => {
     if (!supabase) return
@@ -1056,8 +1229,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPendingVisitRating(null)
     setSelectedLocation(null)
     setEditingLocation(null)
-    staffOtpConfirmed.current = false
-    adminOtpConfirmed.current = false
+    revokeStaffOtp()
+    revokeAdminOtp()
+    clearOtpLoginFlow()
 
     if (supabase && !isDemoUser.current) {
       await supabase.auth.signOut()
@@ -1074,7 +1248,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearAuthError()
       const normalized = email.trim().toLowerCase()
       try {
-        const res = await fetch("/api/auth/reset/send", {
+        const res = await apiFetch("/api/auth/reset/send", {
+          public: true,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: normalized }),
@@ -1122,7 +1297,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false
       }
 
-      const advance = await fetch("/api/auth/reset/advance", {
+      const advance = await apiFetch("/api/auth/reset/advance", {
+        public: true,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rt, action: "verify" }),
@@ -1158,7 +1334,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (rt) {
-        void fetch("/api/auth/reset/advance", {
+        void apiFetch("/api/auth/reset/advance", {
+          public: true,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rt, action: "consume" }),
@@ -1204,7 +1381,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (phone: string): Promise<boolean> => {
       clearAuthError()
       try {
-        const res = await fetch("/api/admin/otp/send", {
+        const res = await apiFetch("/api/admin/otp/send", {
+          public: true,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone }),
@@ -1214,11 +1392,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           email?: string
         }
         if (!res.ok) {
-          setAuthError(data.error || "Could not send admin login code.")
+          setAuthError(formatApiErrorMessage(data, "Could not send admin login code."))
           return false
         }
         setEmailOtpEmail(null)
         setEmailOtpBackScreen("admin-phone-otp")
+        setOtpLoginFlow("admin-phone-otp")
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem("qflow_admin_otp_phone", phone)
         }
@@ -1237,7 +1416,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearAuthError()
       const normalized = email.trim().toLowerCase()
       try {
-        const res = await fetch("/api/staff/login", {
+        const res = await apiFetch("/api/staff/login", {
+          public: true,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: normalized, password }),
@@ -1247,12 +1427,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           email?: string
         }
         if (!res.ok) {
-          setAuthError(data.error || "Could not start staff sign-in.")
+          setAuthError(formatApiErrorMessage(data, "Could not start staff sign-in."))
           return false
         }
         const nextEmail = (data.email || normalized).trim().toLowerCase()
         setEmailOtpEmail(nextEmail)
         setEmailOtpBackScreen("staff-login")
+        setOtpLoginFlow("staff-login")
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem("qflow_staff_otp_email", nextEmail)
         }
@@ -1287,7 +1468,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const res = await fetch("/api/staff/login", {
+        const res = await apiFetch("/api/staff/login", {
+          public: true,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password, resendOnly: true }),
@@ -1299,6 +1481,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         setEmailOtpEmail(email)
         setEmailOtpBackScreen("staff-login")
+        setOtpLoginFlow("staff-login")
         return true
       } catch {
         setAuthError("Could not reach the server to resend the login code.")
@@ -1310,153 +1493,206 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const verifyEmailOtpLogin = useCallback(
     async (otp: string) => {
+      if (emailOtpVerifyInFlight.current) return
+      emailOtpVerifyInFlight.current = true
+      privilegedLoginInProgress.current = true
+
       clearAuthError()
-      const isStaffFlow = emailOtpBackScreen === "staff-login"
-      const isAdminFlow = emailOtpBackScreen === "admin-phone-otp"
+      const storedFlow = readOtpLoginFlow()
+      const activeFlow: OtpLoginFlow =
+        emailOtpBackScreen === "staff-login" || emailOtpBackScreen === "admin-phone-otp"
+          ? emailOtpBackScreen
+          : storedFlow ?? "email-otp"
+      const isStaffFlow = activeFlow === "staff-login"
+      const isAdminFlow = activeFlow === "admin-phone-otp"
 
-      if (!supabase) {
-        navigateTo(emailOtpBackScreen)
-        return
-      }
-
-      if (isAdminFlow) {
-        const phone =
-          typeof window !== "undefined"
-            ? window.sessionStorage.getItem("qflow_admin_otp_phone") || ""
-            : ""
-        if (!phone) {
-          setAuthError("Enter the admin cellphone number again.")
-          navigateTo("admin-phone-otp")
+      try {
+        if (!supabase) {
+          navigateTo(activeFlow === "email-otp" ? "email-otp" : activeFlow)
           return
         }
 
-        adminOtpConfirmed.current = true
-        try {
-          const res = await fetch("/api/admin/otp/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phone, token: otp }),
-          })
-          const data = (await res.json().catch(() => ({}))) as { error?: string }
-          if (!res.ok) {
-            adminOtpConfirmed.current = false
-            setAuthError(data.error || "Invalid login code.")
+        if (isAdminFlow) {
+          const phone =
+            typeof window !== "undefined"
+              ? window.sessionStorage.getItem("qflow_admin_otp_phone") || ""
+              : ""
+          if (!phone) {
+            setAuthError("Enter the admin cellphone number again.")
+            navigateTo("admin-phone-otp")
             return
           }
-        } catch {
-          adminOtpConfirmed.current = false
-          setAuthError("Could not verify the admin login code.")
+
+          confirmAdminOtp()
+          setOtpLoginFlow("admin-phone-otp")
+          try {
+            const res = await apiFetch("/api/admin/otp/verify", {
+              public: true,
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ phone, token: otp }),
+            })
+            const data = (await res.json().catch(() => ({}))) as {
+              error?: string
+              session?: { access_token?: string; refresh_token?: string }
+            }
+            if (!res.ok) {
+              revokeAdminOtp()
+              setAuthError(formatApiErrorMessage(data, "Invalid login code."))
+              return
+            }
+            if (data.session?.access_token && data.session.refresh_token) {
+              await supabase.auth.setSession({
+                access_token: data.session.access_token,
+                refresh_token: data.session.refresh_token,
+              })
+            }
+          } catch {
+            revokeAdminOtp()
+            setAuthError("Could not verify the admin login code.")
+            return
+          }
+
+          await supabase.auth.getSession()
+          const { data: userData } = await supabase.auth.getUser()
+          const user = userData.user
+          if (!user) {
+            revokeAdminOtp()
+            setAuthError("Could not start an admin session. Try again.")
+            return
+          }
+
+          setEmailOtpEmail(null)
+          setEmailOtpBackScreen("email-otp")
+          clearOtpLoginFlow()
+          if (typeof window !== "undefined") {
+            window.sessionStorage.removeItem("qflow_admin_otp_phone")
+          }
+
+          isDemoUser.current = false
+          const profile = await loadProfile(
+            user.id,
+            user.email ?? "",
+            (user.user_metadata?.name as string) ||
+              (user.user_metadata?.full_name as string)
+          )
+          if (!profile || profile.role !== "admin") {
+            revokeAdminOtp()
+            await supabase.auth.signOut()
+            setCurrentUser(null)
+            setAuthError("This login code is not for an admin account.")
+            navigateTo("admin-phone-otp")
+            return
+          }
+
+          confirmAdminOtp()
+          await loadUserData(user.id)
+          goToRoleHome(profile.role, true)
           return
         }
 
-        await supabase.auth.getSession()
-        const { data: userData } = await supabase.auth.getUser()
-        const user = userData.user
+        let email = emailOtpEmail
+        if (!email) {
+          const staffEmail =
+            typeof window !== "undefined"
+              ? window.sessionStorage.getItem("qflow_staff_otp_email")
+              : null
+          if (isStaffFlow && staffEmail) {
+            email = staffEmail
+            setEmailOtpEmail(staffEmail)
+          } else {
+            navigateTo(activeFlow === "email-otp" ? "email-otp" : activeFlow)
+            return
+          }
+        }
+
+        const types = isStaffFlow
+          ? (["magiclink", "email"] as const)
+          : (["email"] as const)
+
+        if (isStaffFlow) {
+          confirmStaffOtp()
+          setOtpLoginFlow("staff-login")
+        }
+
+        let user =
+          null as
+            | { id: string; email?: string | null; user_metadata?: Record<string, unknown> }
+            | null
+        let sessionExpiresAtUnix: number | null = null
+
+        let lastError: string | null = null
+        for (const type of types) {
+          const { data, error } = await supabase.auth.verifyOtp({
+            email,
+            token: otp,
+            type,
+          })
+          if (!error) {
+            user = data.session?.user ?? data.user
+            sessionExpiresAtUnix = data.session?.expires_at ?? null
+            break
+          }
+          lastError = error.message
+        }
+
         if (!user) {
-          adminOtpConfirmed.current = false
-          setAuthError("Could not start an admin session. Try again.")
+          if (isStaffFlow) {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession()
+            if (!session) revokeStaffOtp()
+          }
+          setAuthError(lastError || "Invalid login code.")
           return
+        }
+
+        if (sessionExpiresAtUnix) {
+          setSessionExpiresAt(new Date(sessionExpiresAtUnix * 1000))
         }
 
         setEmailOtpEmail(null)
         setEmailOtpBackScreen("email-otp")
+        clearOtpLoginFlow()
         if (typeof window !== "undefined") {
-          window.sessionStorage.removeItem("qflow_admin_otp_phone")
+          window.sessionStorage.removeItem("qflow_staff_otp_email")
         }
 
         isDemoUser.current = false
         const profile = await loadProfile(
           user.id,
-          user.email ?? "",
+          user.email ?? email,
           (user.user_metadata?.name as string) ||
             (user.user_metadata?.full_name as string)
         )
-        if (!profile || profile.role !== "admin") {
-          adminOtpConfirmed.current = false
+
+        if (isStaffFlow && profile && profile.role !== "staff") {
+          revokeStaffOtp()
           await supabase.auth.signOut()
           setCurrentUser(null)
-          setAuthError("This login code is not for an admin account.")
+          setAuthError("This login code is not for a staff account.")
+          navigateTo("staff-login")
+          return
+        }
+
+        if (profile?.role === "admin" && !adminOtpIsConfirmed()) {
+          await supabase.auth.signOut()
+          setCurrentUser(null)
+          setAuthError("Admins must sign in with cellphone number, then the email code.")
           navigateTo("admin-phone-otp")
           return
         }
 
+        if (isStaffFlow) confirmStaffOtp()
+
         await loadUserData(user.id)
-        goToRoleHome(profile.role)
-        return
+        if (profile) goToRoleHome(profile.role, true)
+      } finally {
+        emailOtpVerifyInFlight.current = false
+        window.setTimeout(() => {
+          privilegedLoginInProgress.current = false
+        }, 750)
       }
-
-      if (!emailOtpEmail) {
-        navigateTo(emailOtpBackScreen)
-        return
-      }
-
-      const email = emailOtpEmail
-      const types = isStaffFlow
-        ? (["magiclink", "email"] as const)
-        : (["email"] as const)
-
-      if (isStaffFlow) {
-        staffOtpConfirmed.current = true
-      }
-
-      let user =
-        null as
-          | { id: string; email?: string | null; user_metadata?: Record<string, unknown> }
-          | null
-
-      let lastError: string | null = null
-      for (const type of types) {
-        const { data, error } = await supabase.auth.verifyOtp({
-          email,
-          token: otp,
-          type,
-        })
-        if (!error) {
-          user = data.session?.user ?? data.user
-          break
-        }
-        lastError = error.message
-      }
-
-      if (!user) {
-        if (isStaffFlow) staffOtpConfirmed.current = false
-        setAuthError(lastError || "Invalid login code.")
-        return
-      }
-
-      setEmailOtpEmail(null)
-      setEmailOtpBackScreen("email-otp")
-      if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem("qflow_staff_otp_email")
-      }
-
-      isDemoUser.current = false
-      const profile = await loadProfile(
-        user.id,
-        user.email ?? email,
-        (user.user_metadata?.name as string) ||
-          (user.user_metadata?.full_name as string)
-      )
-
-      if (isStaffFlow && profile && profile.role !== "staff") {
-        staffOtpConfirmed.current = false
-        await supabase.auth.signOut()
-        setCurrentUser(null)
-        setAuthError("This login code is not for a staff account.")
-        navigateTo("staff-login")
-        return
-      }
-
-      if (profile?.role === "admin" && !adminOtpConfirmed.current) {
-        await supabase.auth.signOut()
-        setCurrentUser(null)
-        setAuthError("Admins must sign in with cellphone number, then the email code.")
-        navigateTo("admin-phone-otp")
-        return
-      }
-
-      await loadUserData(user.id)
-      if (profile) goToRoleHome(profile.role)
     },
     [
       supabase,
@@ -1470,7 +1706,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const joinQueue = useCallback(
-    (location: Location, priority?: { type: PriorityType; category?: string }) => {
+    async (
+      location: Location,
+      priority?: { type: PriorityType; category?: string }
+    ): Promise<boolean> => {
       if (!supabase || !currentUser || isDemoUser.current) {
         setActiveQueue({
           id: Date.now().toString(),
@@ -1482,33 +1721,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
           estimatedWait: location.waitTime + 5,
           status: "waiting",
           joinedAt: new Date(),
+          priorityType: priority?.type ?? "standard",
+          priorityCategory: priority?.category,
         })
         navigateTo("my-queue")
-        return
+        return true
       }
 
-      void (async () => {
-        const { error } = await supabase.from("queue_entries").insert({
-          user_id: currentUser.id,
-          location_id: location.id,
-          priority: priority?.type ?? "standard",
-          priority_category: priority?.category ?? null,
+      try {
+        const res = await apiFetch("/api/queue/join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            locationId: location.id,
+            priority: priority?.type ?? "standard",
+            priorityCategory: priority?.category ?? null,
+          }),
         })
+        const rawText = await res.text()
+        let payload: unknown = {}
+        try {
+          payload = rawText ? JSON.parse(rawText) : {}
+        } catch {
+          payload = { detail: rawText.slice(0, 300) || undefined }
+        }
 
-        if (error) {
-          if (/duplicate key|unique|queue_entries_active_unique/i.test(error.message)) {
-            setAuthError("You are already in this queue.")
-          } else {
-            setAuthError(error.message)
-          }
-          return
+        if (!res.ok) {
+          console.error("JOIN QUEUE FAILED:", {
+            status: res.status,
+            body: payload,
+            raw: rawText.slice(0, 500),
+          })
+          const message = formatApiErrorMessage(payload, "Could not join the queue.")
+          setAuthError(message)
+          return false
         }
 
         await Promise.all([loadActiveQueue(currentUser.id), loadLocations()])
         navigateTo("my-queue")
-      })()
+        return true
+      } catch (err) {
+        console.error("JOIN QUEUE FAILED:", err)
+        setAuthError("Could not reach the server to join the queue.")
+        return false
+      }
     },
-    [supabase, currentUser, loadActiveQueue, loadLocations]
+    [supabase, currentUser, loadActiveQueue, loadLocations, navigateTo]
   )
 
   const leaveQueue = useCallback(() => {
@@ -1553,177 +1811,190 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const serveWalkIn = useCallback(
     (item: StaffQueueItem) => {
-      if (!supabase || !currentUser?.locationId || isDemoUser.current) {
+      if (!currentUser?.locationId || isDemoUser.current) {
         setAuthError("Sign in as staff assigned to a location to serve the queue.")
         return
       }
 
       void (async () => {
-        const { data: claimed, error: claimError } = await supabase.rpc(
-          "claim_queue_entry",
-          { p_entry_id: item.id }
-        )
-
-        if (claimError) {
-          setAuthError(claimError.message)
-          return
-        }
-
-        if (!claimed) {
-          setAuthError("That queue entry is no longer waiting (it may already be locked).")
-          return
-        }
-
-        const { data: remaining } = await supabase
-          .from("queue_entries")
-          .select("position, joined_at")
-          .eq("location_id", claimed.location_id)
-          .in("status", ["waiting", "almost"])
-          .order("position")
-          .limit(1)
-
-        let customerName = item.name
-        if (claimed.user_id) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("name")
-            .eq("id", claimed.user_id)
-            .maybeSingle()
-          customerName = profile?.name ?? item.name
-        } else if (claimed.walk_in_name) {
-          customerName = claimed.walk_in_name
-        }
-
-        if (claimed.user_id) {
-          dispatchQueuePush({
-            userId: claimed.user_id,
-            body: "It is your turn. Please head to the counter.",
-            url: "/queue",
+        try {
+          const res = await apiFetch("/api/staff/queue/claim", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entryId: item.id }),
           })
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: string
+            currentlyServing?: StaffServingApiPayload
+          } & Partial<StaffServingApiPayload & { userId?: string | null; locationId?: string }>
+
+          if (res.status === 409 && data.currentlyServing) {
+            setCurrentlyServing(servingFromApi(data.currentlyServing))
+            await refreshStaffQueue()
+            navigateTo("staff-serving")
+            return
+          }
+
+          if (!res.ok || !data.id || !data.ticketNumber) {
+            setAuthError(data.error ?? "Could not call this customer.")
+            return
+          }
+
+          if (data.userId) {
+            dispatchQueuePush({
+              userId: data.userId,
+              body: notificationBody("your_turn"),
+              url: "/queue",
+            })
+          }
+
+          setCurrentlyServing(
+            servingFromApi({
+              id: data.id,
+              ticketNumber: data.ticketNumber,
+              waitTime: data.waitTime ?? 0,
+              customerName: data.customerName ?? item.name,
+              priorityType: data.priorityType ?? item.priorityType,
+              priorityCategory: data.priorityCategory ?? item.priorityCategory,
+              isWalkIn: data.isWalkIn ?? item.isWalkIn,
+              next: data.next ?? null,
+            })
+          )
+          await refreshStaffQueue()
+          navigateTo("staff-serving")
+        } catch {
+          setAuthError("Could not reach the server to call this customer.")
         }
-
-        const upNext = remaining?.[0]
-
-        setCurrentlyServing({
-          id: claimed.id,
-          ticketNumber: `#${String(claimed.position).padStart(3, "0")}`,
-          waitTime: minutesSince(claimed.joined_at),
-          customerName,
-          priorityType: claimed.priority ?? "standard",
-          priorityCategory: claimed.priority_category ?? undefined,
-          isWalkIn: claimed.is_walk_in === true,
-          next: upNext
-            ? {
-                ticketNumber: `#${String(upNext.position).padStart(3, "0")}`,
-                waitTime: minutesSince(upNext.joined_at),
-              }
-            : null,
-        })
-        navigateTo("staff-serving")
       })()
     },
-    [supabase, currentUser]
+    [currentUser, locations, refreshStaffQueue, navigateTo]
   )
 
   const addWalkIn = useCallback(
-    (item: Omit<StaffQueueItem, "id" | "position"> & { notes?: string }) => {
-      if (!supabase || !currentUser?.locationId || isDemoUser.current) {
-        setAuthError("Sign in as staff assigned to a location to add a walk-in.")
-        return
+    async (
+      item: Omit<StaffQueueItem, "id" | "position"> & { notes?: string }
+    ): Promise<{ id: string; position: number } | { error: string }> => {
+      if (!currentUser?.locationId || isDemoUser.current) {
+        const message =
+          "Sign in as staff assigned to a location to add a walk-in."
+        setAuthError(message)
+        return { error: message }
       }
 
-      void (async () => {
-        const { error } = await supabase.from("queue_entries").insert({
-          location_id: currentUser.locationId!,
-          is_walk_in: true,
-          walk_in_name: item.name.trim(),
-          walk_in_notes: item.notes?.trim() || null,
-          priority: item.priorityType,
-          priority_category: item.priorityCategory ?? null,
+      try {
+        const res = await apiFetch("/api/staff/walk-in", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: item.name.trim(),
+            priority: item.priorityType,
+            priorityCategory: item.priorityCategory ?? null,
+            notes: item.notes?.trim() || null,
+          }),
         })
-
-        if (error) {
-          setAuthError(error.message)
-          return
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string
+          id?: string
+          position?: number
         }
 
-        await recordAudit("Walk-in added", item.name.trim())
-        await loadLocationQueue(currentUser.locationId!)
-      })()
+        if (!res.ok || !data.id || data.position == null) {
+          const message =
+            data.error ??
+            "Could not add walk-in to the queue. Make sure you are staff with a location assigned."
+          setAuthError(message)
+          return { error: message }
+        }
+
+        const newItem: StaffQueueItem = {
+          id: data.id,
+          position: data.position,
+          name: item.name.trim(),
+          waitDuration: 0,
+          isWalkIn: true,
+          priorityType: item.priorityType,
+          priorityCategory: item.priorityCategory,
+          hasSpecialNeeds:
+            Boolean(item.notes) || item.priorityType !== "standard",
+        }
+        setLocationQueue((prev) => {
+          const merged = [
+            ...prev.filter((row) => row.id !== newItem.id),
+            newItem,
+          ]
+          return merged.sort((a, b) => a.position - b.position)
+        })
+
+        await refreshStaffQueue()
+        await loadLocations()
+
+        return { id: data.id, position: data.position }
+      } catch {
+        const message = "Could not reach the server to add a walk-in."
+        setAuthError(message)
+        return { error: message }
+      }
     },
-    [supabase, currentUser, loadLocationQueue, recordAudit]
+    [currentUser, refreshStaffQueue, loadLocations]
   )
 
   const callNext = useCallback(() => {
-    if (!supabase || !currentUser?.locationId || isDemoUser.current) {
+    if (!currentUser?.locationId || isDemoUser.current) {
       setAuthError("Sign in as staff assigned to a location to call the queue.")
       return
     }
 
     void (async () => {
-      const { data: claimed, error: claimError } = await supabase.rpc(
-        "claim_next_queue_entry",
-        { p_location_id: currentUser.locationId! }
-      )
-
-      if (claimError) {
-        setAuthError(claimError.message)
-        return
-      }
-
-      if (!claimed) {
-        setAuthError("No one is waiting in this queue.")
-        return
-      }
-
-      const { data: remaining } = await supabase
-        .from("queue_entries")
-        .select("position, joined_at")
-        .eq("location_id", claimed.location_id)
-        .in("status", ["waiting", "almost"])
-        .order("position")
-        .limit(1)
-
-      let customerName = "Customer"
-      if (claimed.is_walk_in) {
-        customerName = claimed.walk_in_name ?? "Walk-in"
-      } else if (claimed.user_id) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("name")
-          .eq("id", claimed.user_id)
-          .maybeSingle()
-        customerName = profile?.name ?? "Customer"
-      }
-
-      if (claimed.user_id) {
-        dispatchQueuePush({
-          userId: claimed.user_id,
-          body: "It is your turn. Please head to the counter.",
-          url: "/queue",
+      try {
+        const res = await apiFetch("/api/staff/queue/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
         })
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string
+          currentlyServing?: StaffServingApiPayload
+        } & Partial<StaffServingApiPayload & { userId?: string | null; locationId?: string }>
+
+        if (res.status === 409 && data.currentlyServing) {
+          setCurrentlyServing(servingFromApi(data.currentlyServing))
+          await refreshStaffQueue()
+          navigateTo("staff-serving")
+          return
+        }
+
+        if (!res.ok || !data.id || !data.ticketNumber) {
+          setAuthError(data.error ?? "No one is waiting in this queue.")
+          return
+        }
+
+        if (data.userId) {
+          dispatchQueuePush({
+            userId: data.userId,
+            body: notificationBody("your_turn"),
+            url: "/queue",
+          })
+        }
+
+        setCurrentlyServing(
+          servingFromApi({
+            id: data.id,
+            ticketNumber: data.ticketNumber,
+            waitTime: data.waitTime ?? 0,
+            customerName: data.customerName ?? "Customer",
+            priorityType: data.priorityType ?? "standard",
+            priorityCategory: data.priorityCategory,
+            isWalkIn: data.isWalkIn ?? false,
+            next: data.next ?? null,
+          })
+        )
+        await refreshStaffQueue()
+        navigateTo("staff-serving")
+      } catch {
+        setAuthError("Could not reach the server to call the next person.")
       }
-
-      const upNext = remaining?.[0]
-
-      setCurrentlyServing({
-        id: claimed.id,
-        ticketNumber: `#${String(claimed.position).padStart(3, "0")}`,
-        waitTime: minutesSince(claimed.joined_at),
-        customerName,
-        priorityType: claimed.priority ?? "standard",
-        priorityCategory: claimed.priority_category ?? undefined,
-        isWalkIn: claimed.is_walk_in === true,
-        next: upNext
-          ? {
-              ticketNumber: `#${String(upNext.position).padStart(3, "0")}`,
-              waitTime: minutesSince(upNext.joined_at),
-            }
-          : null,
-      })
-      navigateTo("staff-serving")
     })()
-  }, [supabase, currentUser])
+  }, [currentUser, locations, refreshStaffQueue, navigateTo])
 
   // Staff couldn't verify the priority claim at the counter, so the person goes
   // back to the standard queue and the database re-slots them.
@@ -1751,105 +2022,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await recordAudit("queue.priority_demoted", `Priority claim not verified for ${serving.ticketNumber}`)
 
       if (currentUser?.locationId) {
-        await loadLocationQueue(currentUser.locationId)
+        await refreshStaffQueue()
       }
     })()
-  }, [supabase, currentlyServing, currentUser, loadLocationQueue, recordAudit])
+  }, [supabase, currentlyServing, currentUser, refreshStaffQueue, recordAudit, navigateTo])
 
   const finishServing = useCallback(
     (status: "served" | "no-show") => {
       const servingId = currentlyServing?.id
 
-      if (!supabase || !currentUser?.locationId || isDemoUser.current) {
+      if (!currentUser?.locationId || isDemoUser.current) {
         setCurrentlyServing(null)
         navigateTo("staff-dashboard")
         return
       }
 
       void (async () => {
-        let notifiedUserId: string | null = null
+        try {
+          const res = await apiFetch("/api/staff/queue/finish", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entryId: servingId, status }),
+          })
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: string
+            ok?: boolean
+            userId?: string | null
+          }
 
-        if (servingId) {
-          const { data: row } = await supabase
-            .from("queue_entries")
-            .select("user_id")
-            .eq("id", servingId)
-            .eq("status", "serving")
-            .maybeSingle()
-          notifiedUserId = row?.user_id ?? null
-
-          const { data: updated, error: finishError } = await supabase
-            .from("queue_entries")
-            .update({
-              status,
-              served_at: new Date().toISOString(),
-              serving_by: null,
-              serving_started_at: null,
-            })
-            .eq("id", servingId)
-            .eq("status", "serving")
-            .select("id")
-            .maybeSingle()
-
-          if (finishError || !updated) {
+          if (!res.ok) {
             setAuthError(
-              finishError?.message ||
+              data.error ??
                 "Could not finish service — this ticket may already be unlocked."
             )
+            return
           }
-        } else {
-          const { data } = await supabase
-            .from("queue_entries")
-            .select("id, user_id")
-            .eq("location_id", currentUser.locationId!)
-            .eq("status", "serving")
-            .order("serving_started_at", { ascending: false })
-            .limit(1)
-            .maybeSingle()
 
-          if (data) {
-            notifiedUserId = data.user_id
-            await supabase
-              .from("queue_entries")
-              .update({
-                status,
-                served_at: new Date().toISOString(),
-                serving_by: null,
-                serving_started_at: null,
-              })
-              .eq("id", data.id)
-              .eq("status", "serving")
+          const notifiedUserId = data.userId ?? null
+          if (notifiedUserId) {
+            dispatchQueuePush({
+              userId: notifiedUserId,
+              body:
+                status === "served"
+                  ? notificationBody("rate_visit")
+                  : notificationBody("no_show"),
+              url: status === "served" ? "/rate" : "/notifications",
+            })
           }
-        }
 
-        if (notifiedUserId) {
-          dispatchQueuePush({
-            userId: notifiedUserId,
-            body:
-              status === "served"
-                ? "How was your visit? Tap to rate your experience."
-                : "You were marked as a no-show.",
-            url: status === "served" ? "/rate" : "/notifications",
-          })
+          setCurrentlyServing(null)
+          await Promise.all([loadLocations(), refreshStaffQueue()])
+          navigateTo("staff-dashboard")
+        } catch {
+          setAuthError("Could not reach the server to finish service.")
         }
-
-        setCurrentlyServing(null)
-        await Promise.all([
-          loadLocations(),
-          loadLocationQueue(currentUser.locationId!),
-          loadShiftSummary(currentUser.locationId!),
-        ])
-        navigateTo("staff-dashboard")
       })()
     },
-    [
-      supabase,
-      currentUser,
-      currentlyServing,
-      loadLocations,
-      loadLocationQueue,
-      loadShiftSummary,
-    ]
+    [currentUser, currentlyServing, locations, loadLocations, refreshStaffQueue, navigateTo]
   )
 
   const completeService = useCallback(() => finishServing("served"), [finishServing])
@@ -1883,37 +2112,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const submitVisitRating = useCallback(
     async (rating: number, comment: string) => {
       clearAuthError()
-      if (!supabase || !currentUser) return false
+      if (!currentUser) return false
       if (rating < 1 || rating > 5) return false
 
       const pending =
         pendingVisitRating ?? (await loadPendingRating(currentUser.id))
       if (!pending) {
-        setAuthError("There is no visit to rate yet.")
+        setAuthError("You can only rate after being served.")
         return false
       }
 
-      const { error } = await supabase.from("visit_ratings").insert({
-        user_id: currentUser.id,
-        location_id: pending.locationId,
-        queue_entry_id: pending.queueEntryId,
-        rating,
-        comment: comment.trim() || null,
-      })
-
-      if (error) {
-        if (error.code === "23505") {
-          setPendingVisitRating(null)
-          return true
+      try {
+        const res = await apiFetch("/api/rate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rating,
+            comment,
+            queueEntryId: pending.queueEntryId,
+          }),
+        })
+        const data = (await res.json()) as { error?: string }
+        if (!res.ok) {
+          setAuthError(data.error || "You can only rate after being served.")
+          if (res.status === 403 || res.status === 409) {
+            setPendingVisitRating(null)
+          }
+          return false
         }
-        setAuthError(error.message)
+      } catch {
+        setAuthError("Could not submit your rating. Try again.")
         return false
       }
 
       setPendingVisitRating(null)
       return true
     },
-    [supabase, currentUser, pendingVisitRating, loadPendingRating, clearAuthError]
+    [currentUser, pendingVisitRating, loadPendingRating, clearAuthError]
   )
 
   const skipVisitRating = useCallback(() => {
@@ -2011,44 +2246,109 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [supabase, locations, loadLocations, recordAudit]
   )
 
-  const exportMyData = useCallback(() => {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      profile: currentUser,
-      activeQueue,
-      queueHistory,
-      notifications,
+  const exportMyData = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/user/export-data", { method: "GET" })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        setAuthError(body.error || "Could not export your data.")
+        return
+      }
+
+      const blob = await res.blob()
+      const disposition = res.headers.get("Content-Disposition") || ""
+      const match = /filename="([^"]+)"/.exec(disposition)
+      const filename =
+        match?.[1] || `qflow-data-${new Date().toISOString().slice(0, 10)}.json`
+
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setAuthError("Could not export your data.")
+    }
+  }, [])
+
+  const clearQueueHistory = useCallback(async (): Promise<boolean> => {
+    if (!supabase || !currentUser || isDemoUser.current) {
+      setQueueHistory([])
+      return true
     }
 
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
-    )
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `qflow-data-${new Date().toISOString().slice(0, 10)}.json`
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [currentUser, activeQueue, queueHistory, notifications])
+    const { error } = await supabase
+      .from("queue_history")
+      .delete()
+      .eq("user_id", currentUser.id)
 
-  const clearQueueHistory = useCallback(async () => {
+    if (error) {
+      await loadHistory(currentUser.id)
+      setAuthError(error.message || "Could not delete line history.")
+      return false
+    }
+
     setQueueHistory([])
-    if (!supabase || !currentUser || isDemoUser.current) return
-    await supabase.from("queue_history").delete().eq("user_id", currentUser.id)
-  }, [supabase, currentUser])
+    return true
+  }, [supabase, currentUser, loadHistory])
 
   const updateProfile = useCallback(
-    async (updates: { name: string }): Promise<boolean> => {
-      const name = updates.name.trim()
-      if (!currentUser || name.length < 2) return false
+    async (updates: {
+      name?: string
+      cellNumber?: string | null
+      smsNotifications?: boolean
+    }): Promise<boolean> => {
+      if (!currentUser) return false
+
+      const patch: {
+        name?: string
+        cell_number?: string | null
+        sms_notifications?: boolean
+      } = {}
+
+      if (updates.name !== undefined) {
+        const name = updates.name.trim()
+        if (name.length < 2) return false
+        patch.name = name
+      }
+
+      if (updates.cellNumber !== undefined) {
+        if (updates.cellNumber === null || updates.cellNumber.trim() === "") {
+          patch.cell_number = null
+        } else {
+          const formatted = formatSANumber(updates.cellNumber)
+          if (!formatted) {
+            setAuthError("Enter a valid South African mobile number.")
+            return false
+          }
+          patch.cell_number = formatted
+        }
+      }
+
+      if (updates.smsNotifications !== undefined) {
+        patch.sms_notifications = updates.smsNotifications
+      }
+
+      if (Object.keys(patch).length === 0) return false
 
       if (!supabase || isDemoUser.current) {
-        setCurrentUser({ ...currentUser, name })
+        setCurrentUser({
+          ...currentUser,
+          ...(patch.name ? { name: patch.name } : {}),
+          ...(patch.cell_number !== undefined
+            ? { cellNumber: patch.cell_number }
+            : {}),
+          ...(patch.sms_notifications !== undefined
+            ? { smsNotifications: patch.sms_notifications }
+            : {}),
+        })
         return true
       }
 
       const { error } = await supabase
         .from("profiles")
-        .update({ name })
+        .update(patch)
         .eq("id", currentUser.id)
 
       if (error) {
@@ -2056,8 +2356,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false
       }
 
-      void supabase.auth.updateUser({ data: { name } })
-      setCurrentUser({ ...currentUser, name })
+      if (patch.name) {
+        void supabase.auth.updateUser({ data: { name: patch.name } })
+      }
+
+      setCurrentUser({
+        ...currentUser,
+        ...(patch.name ? { name: patch.name } : {}),
+        ...(patch.cell_number !== undefined
+          ? { cellNumber: patch.cell_number }
+          : {}),
+        ...(patch.sms_notifications !== undefined
+          ? { smsNotifications: patch.sms_notifications }
+          : {}),
+      })
       return true
     },
     [supabase, currentUser]
@@ -2133,6 +2445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addWalkIn,
       staffLocationName,
       shiftSummary,
+      refreshStaffQueue,
       pendingVisitRating,
       refreshPendingRating,
       submitVisitRating,

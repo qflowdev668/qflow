@@ -1,3 +1,5 @@
+import { Ratelimit } from "@upstash/ratelimit"
+import { Redis } from "@upstash/redis"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import type { Database } from "@/lib/supabase/types"
@@ -7,9 +9,9 @@ const IDENTITY_MAX = 3
 const IP_WINDOW_MS = 60 * 60 * 1000
 const IP_MAX = 10
 
-const RATE_LIMIT_MESSAGE = "Too many attempts. Try again in 15 minutes."
+export const RATE_LIMIT_MESSAGE = "Too many attempts. Try again in 15 minutes."
 
-/** Sliding-window hits keyed by bucket (e.g. phone:, email:, ip:). */
+/** Sliding-window hits keyed by bucket (e.g. phone:, email:, ip:). Local/dev fallback. */
 const hits = new Map<string, number[]>()
 
 function prune(key: string, windowMs: number, now: number): number[] {
@@ -62,20 +64,54 @@ async function logRateLimitHit(detail: string): Promise<void> {
   }
 }
 
-export type OtpRateLimitResult =
-  | { ok: true }
-  | { ok: false; response: NextResponse }
+function isUpstashConfigured(): boolean {
+  return Boolean(
+    process.env.UPSTASH_REDIS_REST_URL?.trim() &&
+      process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
+  )
+}
 
-/**
- * Identity: max 3 OTP sends per phone/email per 15 minutes.
- * IP: max 10 requests per hour.
- * On hit: audit_log row + 429.
- */
-export async function enforceOtpRateLimit(options: {
+type Limiters = {
+  identity: Ratelimit
+  ip: Ratelimit
+}
+
+let upstashLimiters: Limiters | null | undefined
+
+function getUpstashLimiters(): Limiters | null {
+  if (upstashLimiters !== undefined) return upstashLimiters
+  if (!isUpstashConfigured()) {
+    upstashLimiters = null
+    return null
+  }
+
+  try {
+    const redis = Redis.fromEnv()
+    upstashLimiters = {
+      identity: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(IDENTITY_MAX, "15 m"),
+        prefix: "qflow:otp:identity",
+        analytics: true,
+      }),
+      ip: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(IP_MAX, "1 h"),
+        prefix: "qflow:otp:ip",
+        analytics: true,
+      }),
+    }
+  } catch (err) {
+    console.warn("[rate-limit] Upstash init failed — using in-memory fallback.", err)
+    upstashLimiters = null
+  }
+
+  return upstashLimiters
+}
+
+async function enforceMemory(options: {
   request: Request
-  /** Normalized phone or email used as the identity key. */
   identity: string
-  /** "phone" | "email" — labels the identity in the bucket key and audit detail. */
   identityKind: "phone" | "email"
   route: string
 }): Promise<OtpRateLimitResult> {
@@ -91,7 +127,7 @@ export async function enforceOtpRateLimit(options: {
     const reason = identityBlocked
       ? `${options.identityKind} ${options.identity}`
       : `ip ${ip}`
-    await logRateLimitHit(`${options.route}: ${reason}`)
+    await logRateLimitHit(`${options.route}: ${reason} (memory)`)
     return {
       ok: false,
       response: NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 }),
@@ -103,4 +139,74 @@ export async function enforceOtpRateLimit(options: {
   return { ok: true }
 }
 
-export { RATE_LIMIT_MESSAGE }
+async function enforceUpstash(
+  limiters: Limiters,
+  options: {
+    request: Request
+    identity: string
+    identityKind: "phone" | "email"
+    route: string
+  }
+): Promise<OtpRateLimitResult> {
+  const ip = clientIp(options.request)
+  const identityKey = `${options.identityKind}:${options.identity}`
+  const ipKey = `ip:${ip}`
+
+  const [identityResult, ipResult] = await Promise.all([
+    limiters.identity.limit(identityKey),
+    limiters.ip.limit(ipKey),
+  ])
+
+  // Analytics / multi-region sync — don't block the response
+  void identityResult.pending
+  void ipResult.pending
+
+  if (!identityResult.success || !ipResult.success) {
+    const reason = !identityResult.success
+      ? `${options.identityKind} ${options.identity}`
+      : `ip ${ip}`
+    await logRateLimitHit(`${options.route}: ${reason} (upstash)`)
+    return {
+      ok: false,
+      response: NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 }),
+    }
+  }
+
+  return { ok: true }
+}
+
+export type OtpRateLimitResult =
+  | { ok: true }
+  | { ok: false; response: NextResponse }
+
+/**
+ * Identity: max 3 OTP sends per phone/email per 15 minutes.
+ * IP: max 10 requests per hour.
+ * Uses Upstash Redis when configured; otherwise in-memory Map (local/dev).
+ * On hit: audit_log row + 429.
+ *
+ * Applied via callers on:
+ * - /api/admin/otp/send (admin OTP)
+ * - /api/staff/login (staff OTP + resend)
+ * - /api/auth/reset/send (password reset)
+ */
+export async function enforceOtpRateLimit(options: {
+  request: Request
+  /** Normalized phone or email used as the identity key. */
+  identity: string
+  /** "phone" | "email" — labels the identity in the bucket key and audit detail. */
+  identityKind: "phone" | "email"
+  route: string
+}): Promise<OtpRateLimitResult> {
+  const limiters = getUpstashLimiters()
+  if (limiters) {
+    try {
+      return await enforceUpstash(limiters, options)
+    } catch (err) {
+      console.warn("[rate-limit] Upstash call failed — falling back to memory.", err)
+      return enforceMemory(options)
+    }
+  }
+
+  return enforceMemory(options)
+}

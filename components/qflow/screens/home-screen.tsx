@@ -7,11 +7,19 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 import { useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useApp, Location } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
 import { LocationCard } from "@/components/qflow/location-card"
-import { Bell, Search, ServerCrash, RefreshCw, Smartphone, X, CheckCircle2 } from "lucide-react"
+import { JoinQueueDrawer } from "@/components/qflow/join-queue-drawer"
+import { QuickActionTile } from "@/components/qflow/user-screen-layout"
+import {
+  FindLocationScene,
+  JoinRemotelyScene,
+  WelcomeHomeScene,
+} from "@/components/qflow/illustrations/queue-scenes"
+import { Bell, Search, ServerCrash, RefreshCw, Smartphone, X, CheckCircle2, MapPin, Clock } from "lucide-react"
 import { useServerOutage } from "@/components/qflow/server-outage-banner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,33 +28,41 @@ import { cn } from "@/lib/utils"
 const categoryIds = ["all", "clinic", "bank", "government", "other"] as const
 
 export function HomeScreen() {
-  const { currentUser, locations, navigateTo, notifications, setSelectedLocation, refreshLocations } = useApp()
+  const { currentUser, locations, navigateTo, notifications, setSelectedLocation, refreshLocations, activeQueue } = useApp()
   const t = useT()
   const { isServerDown } = useServerOutage()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [isRetrying, setIsRetrying] = useState(false)
-  
-  // PWA Install Banner — once after first login only
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [joinDrawerOpen, setJoinDrawerOpen] = useState(false)
+
   const [showInstallBanner, setShowInstallBanner] = useState(false)
   const [showInstalledToast, setShowInstalledToast] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
 
   useEffect(() => {
-    if (!currentUser) return
+    const toast = searchParams.get("toast")
+    if (toast === "rate_denied") {
+      setToastMessage(t.rateOnlyAfterServed)
+      router.replace("/home", { scroll: false })
+      const timer = setTimeout(() => setToastMessage(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams, router, t.rateOnlyAfterServed])
 
+  useEffect(() => {
+    if (!currentUser) return
     const seenKey = "qflow_install_prompt_seen"
     if (localStorage.getItem(seenKey)) return
-
-    // First home visit after login — show once, then never again
     setShowInstallBanner(true)
     localStorage.setItem(seenKey, "1")
-
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
     }
-
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
     return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
   }, [currentUser])
@@ -102,7 +118,6 @@ export function HomeScreen() {
     return matchesSearch && matchesCategory
   })
 
-  // Shortest queues first, closed locations last
   const sortedLocations = [...filteredLocations].sort((a, b) => {
     if (a.isOpen !== b.isOpen) return a.isOpen ? -1 : 1
     return a.waitTime - b.waitTime
@@ -112,118 +127,148 @@ export function HomeScreen() {
 
   const handleLocationClick = (location: Location) => {
     setSelectedLocation(location)
-    navigateTo("location-detail")
+    setJoinDrawerOpen(true)
+  }
+
+  const openFirstClinic = () => {
+    const clinic = sortedLocations.find((l) => l.type === "clinic" && l.isOpen)
+    if (clinic) {
+      handleLocationClick(clinic)
+    } else {
+      setSelectedCategory("clinic")
+    }
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-card border-b border-border px-4 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">
-              {getGreeting()}, {currentUser?.name.split(" ")[0]}
+    <div className="min-h-screen bg-white pb-28">
+      {/* Panel 1 — greeting + visual welcome */}
+      <section className="px-4 pt-6 pb-4">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-muted-foreground">{getGreeting()}</p>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight mt-0.5">
+              {currentUser?.name.split(" ")[0]}
             </h1>
-            <p className="text-sm text-muted-foreground">{t.findQueueToJoin}</p>
+            <p className="text-base font-semibold text-foreground mt-2">
+              {t.findQueueToJoin}
+            </p>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={() => navigateTo("notifications")}
-            className="relative p-2 rounded-full hover:bg-muted transition-colors"
+            className="relative p-3 rounded-2xl bg-muted shrink-0"
           >
-            <Bell className="w-6 h-6 text-foreground" />
+            <Bell className="w-5 h-5 text-foreground" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-destructive text-white text-xs font-bold rounded-full flex items-center justify-center">
-                {unreadCount}
-              </span>
+              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-destructive rounded-full" />
             )}
           </button>
         </div>
 
-        {/* PWA Install Banner - Part A */}
+        <div className="rounded-3xl overflow-hidden border border-border/80 mb-4">
+          <WelcomeHomeScene className="w-full h-auto" />
+        </div>
+
         {showInstallBanner && (
-          <div className="bg-[#2563EB] text-white rounded-2xl px-4 py-3 mb-3 relative">
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 mb-4 relative">
             <button
+              type="button"
               onClick={handleDismissInstallBanner}
-              className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-lg transition-colors"
+              className="absolute top-2 right-2 p-1 hover:bg-primary/10 rounded-lg"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 text-muted-foreground" />
             </button>
             <div className="flex items-center gap-3">
-              <Smartphone className="w-6 h-6 flex-shrink-0" />
+              <Smartphone className="w-6 h-6 text-primary shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">{t.addToHomeScreen}</p>
-                <p className="text-xs text-blue-200">{t.getNotifiedTurn}</p>
+                <p className="font-bold text-sm text-foreground">{t.addToHomeScreen}</p>
+                <p className="text-xs text-muted-foreground">{t.getNotifiedTurn}</p>
               </div>
               <button
+                type="button"
                 onClick={handleInstallClick}
-                className="bg-white text-[#2563EB] px-3 py-1 rounded-lg text-sm font-medium flex-shrink-0"
+                className="bg-primary text-primary-foreground px-3 py-1.5 rounded-xl text-sm font-bold shrink-0"
               >
                 {t.install}
               </button>
             </div>
           </div>
         )}
+      </section>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+      {/* Panel 2 — search + quick actions (3 tiles) */}
+      <section className="px-4 pb-4 border-b border-border/80">
+        <div className="relative mb-4">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input
             type="text"
             placeholder={t.searchClinicsBanks}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-11 bg-muted border-0"
+            className="pl-12 h-14 bg-muted border-0 rounded-2xl text-base font-medium placeholder:text-muted-foreground"
           />
         </div>
-      </header>
 
-      {/* Categories */}
-      <div className="px-4 py-3 overflow-x-auto">
-        <div className="flex gap-2">
+        <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+          <QuickActionTile
+            illustration={<FindLocationScene className="w-full h-full scale-110" />}
+            title={t.categoryClinic}
+            subtitle={t.findLocationDesc.split(".")[0]}
+            onClick={openFirstClinic}
+          />
+          <QuickActionTile
+            illustration={<JoinRemotelyScene className="w-full h-full scale-110" />}
+            title={t.navMyQueue}
+            subtitle={activeQueue ? `#${String(activeQueue.position).padStart(3, "0")}` : t.noActiveQueueHint.split(".")[0]}
+            onClick={() => navigateTo("my-queue")}
+            accent="secondary"
+          />
+          <QuickActionTile
+            illustration={
+              <div className="w-full h-full flex items-center justify-center bg-primary/10">
+                <MapPin className="w-10 h-10 text-primary" />
+              </div>
+            }
+            title={t.navMap}
+            subtitle={t.allLocations}
+            onClick={() => navigateTo("map")}
+            accent="success"
+          />
+        </div>
+
+        <div className="flex gap-2 mt-4 overflow-x-auto pb-1">
           {categoryIds.map((cat) => (
             <button
               key={cat}
+              type="button"
               onClick={() => setSelectedCategory(cat)}
               className={cn(
-                "flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors",
+                "flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors",
                 selectedCategory === cat
-                  ? "bg-primary text-white"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  ? "bg-foreground text-background"
+                  : "bg-muted text-muted-foreground"
               )}
             >
               {categoryLabels[cat]}
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Server Outage Card - Part D */}
+      {/* Panel 3 — locations list */}
       {isServerDown && (
         <section className="px-4 pt-4">
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
             <div className="flex items-start gap-3">
-              <ServerCrash className="w-6 h-6 text-[#EF4444] flex-shrink-0 mt-0.5" />
+              <ServerCrash className="w-6 h-6 text-destructive shrink-0 mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-bold text-[#EF4444] mb-2 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#EF4444] animate-pulse" />
-                  {t.qflowUnavailable}
-                </h3>
-                <p className="text-sm text-gray-700 mb-1">
-                  {t.serviceExperiencingIssues}
-                </p>
-                <p className="text-sm text-gray-700 mb-3">
-                  {t.whatToDo}
-                </p>
-                <ul className="text-sm text-gray-700 mb-4 space-y-1">
-                  <li>• {t.visitInPerson}</li>
-                  <li>• {t.askManualTicket}</li>
-                  <li>• {t.checkBack30Min}</li>
-                </ul>
+                <h3 className="font-bold text-destructive mb-2">{t.qflowUnavailable}</h3>
+                <p className="text-sm text-foreground/80 mb-3">{t.serviceExperiencingIssues}</p>
                 <Button
                   variant="outline"
                   onClick={handleRetryConnection}
                   disabled={isRetrying}
-                  className="w-full h-11 border-[#2563EB] text-[#2563EB] hover:bg-blue-50"
+                  className="w-full h-11 rounded-xl"
                 >
                   <RefreshCw className={cn("w-4 h-4 mr-2", isRetrying && "animate-spin")} />
                   {isRetrying ? t.retrying : t.retryConnection}
@@ -234,14 +279,16 @@ export function HomeScreen() {
         </section>
       )}
 
-      {/* Shortest queues right now */}
-      <section className="px-4 py-4">
-        <h2 className="text-lg font-semibold text-foreground mb-3">{t.shortestQueues}</h2>
+      <section className="px-4 py-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-bold text-foreground">{t.shortestQueues}</h2>
+        </div>
         <div className={cn("flex gap-3 overflow-x-auto pb-2 -mx-4 px-4", isServerDown && "opacity-60")}>
           {nearbyLocations.map((location) => (
-            <LocationCard 
-              key={location.id} 
-              location={location} 
+            <LocationCard
+              key={location.id}
+              location={location}
               variant="horizontal"
               onClick={() => !isServerDown && handleLocationClick(location)}
               disabled={isServerDown}
@@ -250,14 +297,13 @@ export function HomeScreen() {
         </div>
       </section>
 
-      {/* All Locations (sorted with closed at bottom) */}
-      <section className="px-4 py-4">
-        <h2 className="text-lg font-semibold text-foreground mb-3">{t.allLocations}</h2>
+      <section className="px-4 pb-4">
+        <h2 className="text-lg font-bold text-foreground mb-3">{t.allLocations}</h2>
         <div className={cn("space-y-3", isServerDown && "opacity-60")}>
           {sortedLocations.map((location) => (
-            <LocationCard 
-              key={location.id} 
-              location={location} 
+            <LocationCard
+              key={location.id}
+              location={location}
               variant="vertical"
               onClick={() => !isServerDown && handleLocationClick(location)}
               disabled={isServerDown}
@@ -266,14 +312,10 @@ export function HomeScreen() {
         </div>
 
         {sortedLocations.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <p className="text-muted-foreground">
-              {locations.length === 0
-                ? t.noLocationsAdded
-                : t.noLocationsMatchSearch}
+          <div className="text-center py-8">
+            <FindLocationScene className="w-full max-w-xs mx-auto h-auto mb-4 rounded-2xl" />
+            <p className="text-muted-foreground font-medium">
+              {locations.length === 0 ? t.noLocationsAdded : t.noLocationsMatchSearch}
             </p>
           </div>
         )}
@@ -281,13 +323,20 @@ export function HomeScreen() {
 
       <BottomNav />
 
-      {/* PWA Installed Toast - Part A */}
+      <JoinQueueDrawer open={joinDrawerOpen} onOpenChange={setJoinDrawerOpen} />
+
       {showInstalledToast && (
-        <div className="fixed bottom-24 left-4 right-4 bg-[#10B981] text-white rounded-xl p-4 shadow-lg z-50 animate-in slide-in-from-bottom">
+        <div className="fixed bottom-28 left-4 right-4 bg-success text-white rounded-2xl p-4 shadow-lg z-50">
           <div className="flex items-center gap-2 justify-center">
             <CheckCircle2 className="w-5 h-5" />
-            <p className="font-medium">{t.qflowInstalled}</p>
+            <p className="font-bold">{t.qflowInstalled}</p>
           </div>
+        </div>
+      )}
+
+      {toastMessage && (
+        <div className="fixed bottom-28 left-4 right-4 bg-foreground text-background rounded-2xl p-4 shadow-lg z-50 text-center font-semibold">
+          {toastMessage}
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { TopBar } from "@/components/qflow/top-bar"
@@ -19,6 +20,7 @@ export function RateExperienceScreen() {
     clearAuthError,
   } = useApp()
   const t = useT()
+  const router = useRouter()
   const [rating, setRating] = useState(0)
   const [hoveredRating, setHoveredRating] = useState(0)
   const [comment, setComment] = useState("")
@@ -33,13 +35,17 @@ export function RateExperienceScreen() {
     }
     let cancelled = false
     setIsLookingUp(true)
-    void refreshPendingRating().finally(() => {
-      if (!cancelled) setIsLookingUp(false)
+    void refreshPendingRating().then((pending) => {
+      if (cancelled) return
+      setIsLookingUp(false)
+      if (!pending) {
+        router.replace("/home?toast=rate_denied")
+      }
     })
     return () => {
       cancelled = true
     }
-  }, [pendingVisitRating, refreshPendingRating])
+  }, [pendingVisitRating, refreshPendingRating, router])
 
   const handleSubmit = async () => {
     if (rating === 0) return
@@ -82,11 +88,19 @@ export function RateExperienceScreen() {
     )
   }
 
+  if (isLookingUp || !pendingVisitRating) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <TopBar 
-        title={t.rateYourExperience} 
-        showBack 
+      <TopBar
+        title={t.rateYourExperience}
+        showBack
         backTo="home"
       />
 
@@ -99,9 +113,7 @@ export function RateExperienceScreen() {
             {t.howWasExperience}
           </h2>
           <p className="text-muted-foreground">
-            {pendingVisitRating
-              ? pendingVisitRating.locationName
-              : t.feedbackHelpsServe}
+            {pendingVisitRating.locationName}
           </p>
         </div>
 
@@ -109,16 +121,17 @@ export function RateExperienceScreen() {
           {[1, 2, 3, 4, 5].map((star) => (
             <button
               key={star}
+              type="button"
               onClick={() => setRating(star)}
               onMouseEnter={() => setHoveredRating(star)}
               onMouseLeave={() => setHoveredRating(0)}
               className="p-2 transition-transform hover:scale-110"
             >
-              <Star 
+              <Star
                 className={cn(
                   "w-10 h-10 transition-colors",
-                  (hoveredRating || rating) >= star 
-                    ? "text-secondary fill-secondary" 
+                  (hoveredRating || rating) >= star
+                    ? "text-secondary fill-secondary"
                     : "text-border"
                 )}
               />
@@ -150,15 +163,16 @@ export function RateExperienceScreen() {
           <p className="text-sm text-destructive text-center mb-4">{authError}</p>
         )}
 
-        <Button 
+        <Button
           onClick={() => void handleSubmit()}
           className="w-full h-12 text-base font-semibold"
-          disabled={rating === 0 || isSaving || isLookingUp}
+          disabled={rating === 0 || isSaving}
         >
           <Send className="w-5 h-5 mr-2" />
           {t.submitFeedback}
         </Button>
-        <button 
+        <button
+          type="button"
           onClick={handleSkip}
           className="w-full text-center text-muted-foreground hover:text-foreground transition-colors py-2"
         >

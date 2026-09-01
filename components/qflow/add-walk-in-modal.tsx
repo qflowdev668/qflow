@@ -31,7 +31,35 @@ interface AddWalkInModalProps {
     priorityType: PrioritySelection
     priorityCategory?: string
     notes?: string
-  }) => void
+  }) => Promise<{ id: string; position: number } | { error: string }>
+}
+
+type SessionWalkIn = {
+  name: string
+  position: number
+  priorityType: PrioritySelection
+}
+
+function printWalkInTicket(html: string) {
+  const win = window.open("", "_blank", "width=420,height=640")
+  if (!win) return
+  win.document.write(`<!DOCTYPE html>
+<html><head><title>QFlow Ticket</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; color: #0a0f1a; }
+  .ticket { max-width: 320px; margin: 0 auto; border: 2px solid #1d4ed8; border-radius: 16px; padding: 24px; }
+  .brand { font-weight: 700; color: #1d4ed8; margin-bottom: 4px; }
+  .location { color: #64748b; font-size: 14px; margin-bottom: 16px; }
+  .name { font-size: 20px; font-weight: 600; margin: 8px 0 4px; }
+  .position { font-size: 56px; font-weight: 700; text-align: center; margin: 16px 0; color: #1d4ed8; }
+  .meta { display: flex; justify-content: space-between; font-size: 14px; border-top: 1px dashed #cbd5e1; padding-top: 12px; margin-top: 12px; }
+  .muted { color: #64748b; }
+  @media print { body { padding: 0; } }
+</style></head><body>${html}</body></html>`)
+  win.document.close()
+  win.focus()
+  win.print()
+  win.close()
 }
 
 const emergencyOptions = [
@@ -52,7 +80,7 @@ const fastTrackOptions = [
 ] as const
 
 export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModalProps) {
-  const { locationQueue, staffLocationName } = useApp()
+  const { staffLocationName } = useApp()
   const t = useT()
   const [step, setStep] = useState<"form" | "confirmation">("form")
   const [formData, setFormData] = useState<WalkInCustomer>({
@@ -66,23 +94,46 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
   })
   const [assignedPosition, setAssignedPosition] = useState(1)
   const [estimatedWait, setEstimatedWait] = useState(0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [sessionWalkIns, setSessionWalkIns] = useState<SessionWalkIn[]>([])
 
   const handleSelectEmergency = (id: EmergencyCategory) => {
-    setFormData(prev => ({
-      ...prev,
-      priorityType: "emergency",
-      emergencyCategory: id,
-      fastTrackCategory: null
-    }))
+    setFormData(prev => {
+      if (prev.emergencyCategory === id) {
+        return {
+          ...prev,
+          priorityType: "standard",
+          emergencyCategory: null,
+          fastTrackCategory: null,
+        }
+      }
+      return {
+        ...prev,
+        priorityType: "emergency",
+        emergencyCategory: id,
+        fastTrackCategory: null,
+      }
+    })
   }
 
   const handleSelectFastTrack = (id: FastTrackCategory) => {
-    setFormData(prev => ({
-      ...prev,
-      priorityType: "fast-track",
-      emergencyCategory: null,
-      fastTrackCategory: id
-    }))
+    setFormData(prev => {
+      if (prev.fastTrackCategory === id) {
+        return {
+          ...prev,
+          priorityType: "standard",
+          emergencyCategory: null,
+          fastTrackCategory: null,
+        }
+      }
+      return {
+        ...prev,
+        priorityType: "fast-track",
+        emergencyCategory: null,
+        fastTrackCategory: id,
+      }
+    })
   }
 
   const handleSelectStandard = () => {
@@ -94,28 +145,37 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
     }))
   }
 
-  const handleSubmit = () => {
-    if (!formData.name.trim()) return
+  const handleSubmit = async () => {
+    if (!formData.name.trim() || isSubmitting) return
 
-    const everyoneWaiting = locationQueue
-    const emergenciesAhead = everyoneWaiting.filter((w) => w.priorityType === "emergency").length
-    const priorityAhead = everyoneWaiting.filter((w) => w.priorityType !== "standard").length
-    const position =
-      formData.priorityType === "emergency"
-        ? emergenciesAhead + 1
-        : formData.priorityType === "fast-track"
-        ? priorityAhead + 1
-        : everyoneWaiting.length + 1
-    setAssignedPosition(position)
-    setEstimatedWait(estimateWait(position - 1))
+    setIsSubmitting(true)
+    setSubmitError(null)
 
-    onAddCustomer({
+    const result = await onAddCustomer({
       name: formData.name,
       priorityType: formData.priorityType,
       priorityCategory:
         formData.priorityType === "standard" ? undefined : getPriorityLabel(),
       notes: formData.notes.trim() || undefined,
     })
+
+    setIsSubmitting(false)
+
+    if ("error" in result) {
+      setSubmitError(result.error)
+      return
+    }
+
+    setAssignedPosition(result.position)
+    setEstimatedWait(estimateWait(Math.max(result.position - 1, 0)))
+    setSessionWalkIns((prev) => [
+      ...prev,
+      {
+        name: formData.name.trim(),
+        position: result.position,
+        priorityType: formData.priorityType,
+      },
+    ])
     setStep("confirmation")
   }
 
@@ -134,6 +194,9 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
 
   const handleClose = () => {
     setStep("form")
+    setSubmitError(null)
+    setIsSubmitting(false)
+    setSessionWalkIns([])
     setFormData({
       name: "",
       idNumber: "",
@@ -160,6 +223,33 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
       return fastTrackOptions.find(o => o.id === formData.fastTrackCategory)?.label || "Fast-track"
     }
     return "Standard"
+  }
+
+  const getPositionDisplay = (priorityType: PrioritySelection, position: number) => {
+    if (priorityType === "emergency") return "P1"
+    if (priorityType === "fast-track") return `P${position}`
+    return String(position)
+  }
+
+  const handlePrintTicket = () => {
+    const positionLabel = getPositionDisplay(formData.priorityType, assignedPosition)
+    const waitLabel =
+      formData.priorityType === "emergency"
+        ? t.immediateWait
+        : `~${estimatedWait} min`
+    printWalkInTicket(`
+      <div class="ticket">
+        <div class="brand">QFlow</div>
+        <div class="location">${staffLocationName ?? "QFlow location"}</div>
+        <div class="name">${formData.name || "Customer"}</div>
+        <div class="muted">${t.walkInCustomerLabel}</div>
+        <div class="position">#${positionLabel}</div>
+        <div class="meta">
+          <div><div class="muted">${t.estWaitLabel}</div><strong>${waitLabel}</strong></div>
+          <div style="text-align:right"><div class="muted">${t.joinedLabel}</div><strong>${currentTime}</strong></div>
+        </div>
+      </div>
+    `)
   }
 
   if (!isOpen) return null
@@ -228,27 +318,6 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                     className="h-12 rounded-xl"
                   />
                   <p className="text-xs text-muted-foreground">{t.notStoredPermanently}</p>
-                </div>
-
-                {/* Cell Number — SMS updates are not wired up yet */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <label htmlFor="walk-in-cell" className="text-sm font-medium text-muted-foreground">
-                      {t.cellNumber}
-                    </label>
-                    <span className="text-[11px] font-medium uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
-                      {t.comingSoon}
-                    </span>
-                  </div>
-                  <Input
-                    id="walk-in-cell"
-                    placeholder={t.smsUpdatesPlaceholder}
-                    value=""
-                    readOnly
-                    disabled
-                    className="h-12 rounded-xl"
-                  />
-                  <p className="text-xs text-muted-foreground">{t.smsNotAvailableYet}</p>
                 </div>
 
                 {/* Priority Selection */}
@@ -417,9 +486,14 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
 
               {/* Form Actions */}
               <div className="sticky bottom-0 bg-card px-4 py-4 border-t border-border space-y-3">
+                {submitError && (
+                  <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2">
+                    {submitError}
+                  </p>
+                )}
                 <Button 
-                  onClick={handleSubmit}
-                  disabled={!formData.name.trim()}
+                  onClick={() => void handleSubmit()}
+                  disabled={!formData.name.trim() || isSubmitting}
                   className={cn(
                     "w-full h-14 text-base font-semibold rounded-xl",
                     formData.priorityType === "emergency" && "bg-[#EF4444] hover:bg-red-600",
@@ -427,7 +501,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                   )}
                 >
                   <UserPlus className="w-5 h-5 mr-2" />
-                  {t.addToQueue}
+                  {isSubmitting ? t.sending : t.addToQueue}
                 </Button>
                 <button 
                   onClick={handleClose}
@@ -546,7 +620,7 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
                         ? "text-[#F59E0B]"
                         : "text-primary"
                     )}>
-                      #{formData.priorityType === "emergency" ? "P1" : formData.priorityType === "fast-track" ? `P${assignedPosition}` : assignedPosition}
+                      #{getPositionDisplay(formData.priorityType, assignedPosition)}
                     </p>
                   </div>
                   
@@ -576,9 +650,31 @@ export function AddWalkInModal({ isOpen, onClose, onAddCustomer }: AddWalkInModa
 
                 {/* Action Buttons */}
                 <div className="mt-6 space-y-3">
+                  {sessionWalkIns.length > 0 && (
+                    <div className="rounded-xl border border-border bg-muted/40 p-3">
+                      <p className="text-sm font-semibold text-foreground mb-2">
+                        {t.walkInBadge} — {sessionWalkIns.length} added
+                      </p>
+                      <ul className="space-y-2 max-h-32 overflow-y-auto">
+                        {sessionWalkIns.map((entry, index) => (
+                          <li
+                            key={`${entry.name}-${entry.position}-${index}`}
+                            className="flex items-center justify-between text-sm bg-card rounded-lg px-3 py-2 border border-border/60"
+                          >
+                            <span className="font-medium text-foreground truncate pr-2">
+                              {entry.name}
+                            </span>
+                            <span className="font-bold text-primary shrink-0">
+                              #{getPositionDisplay(entry.priorityType, entry.position)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <Button 
                     variant="outline"
-                    onClick={() => window.print()}
+                    onClick={handlePrintTicket}
                     className="w-full h-12 text-base font-medium rounded-xl border-2 border-primary text-primary hover:bg-primary hover:text-white"
                   >
                     <Printer className="w-5 h-5 mr-2" />

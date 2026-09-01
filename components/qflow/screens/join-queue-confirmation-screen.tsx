@@ -1,14 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import type { TranslationKeys } from "@/lib/i18n"
 import { estimateWait } from "@/lib/supabase/helpers"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
-import { MapPin, Clock, Users, CheckCircle2, Bell, Shield, Siren, Flame, Car, Medal, Backpack, Baby, Accessibility, UserCircle, HeartPulse, BellRing, MessageSquare } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { MapPin, Clock, Users, CheckCircle2, Bell, Shield, Siren, Flame, Car, Medal, Backpack, Baby, Accessibility, UserCircle, HeartPulse, BellRing } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type PriorityCategory = 
@@ -54,12 +53,31 @@ function getPriorityLabel(t: TranslationKeys, id: Exclude<PriorityCategory, null
 }
 
 export function JoinQueueConfirmationScreen() {
-  const { joinQueue, navigateTo, selectedLocation } = useApp()
+  const {
+    joinQueue,
+    navigateTo,
+    selectedLocation,
+    authError,
+    clearAuthError,
+  } = useApp()
   const t = useT()
   const [selectedPriority, setSelectedPriority] = useState<PriorityCategory>(null)
-  const [notificationState, setNotificationState] = useState<"ask" | "granted" | "sms">("ask")
-
+  const [notificationState, setNotificationState] = useState<"ask" | "granted" | "skipped">("ask")
+  const [joining, setJoining] = useState(false)
   const location = selectedLocation
+
+  useEffect(() => {
+    clearAuthError()
+  }, [clearAuthError])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return
+    if (Notification.permission === "granted") {
+      setNotificationState("granted")
+    } else if (Notification.permission === "denied") {
+      setNotificationState("skipped")
+    }
+  }, [])
 
   const position = (location?.queueCount ?? 0) + 1
   const estimatedWait = estimateWait(position - 1)
@@ -67,13 +85,17 @@ export function JoinQueueConfirmationScreen() {
   const isEmergency = selectedPriority && emergencyCategoryIds.some(c => c === selectedPriority)
   const isFastTrack = selectedPriority && fastTrackCategoryIds.some(c => c === selectedPriority)
 
-  const handleConfirm = () => {
-    if (!location) return
-
-    const type = isEmergency ? "emergency" : isFastTrack ? "fast-track" : "standard"
-    const label = selectedPriority ? getPriorityLabel(t, selectedPriority) : undefined
-
-    joinQueue(location, { type, category: label })
+  const handleConfirm = async () => {
+    if (!location || joining) return
+    clearAuthError()
+    setJoining(true)
+    try {
+      const type = isEmergency ? "emergency" : isFastTrack ? "fast-track" : "standard"
+      const label = selectedPriority ? getPriorityLabel(t, selectedPriority) : undefined
+      await joinQueue(location, { type, category: label })
+    } finally {
+      setJoining(false)
+    }
   }
 
   const handleCancel = () => {
@@ -89,16 +111,14 @@ export function JoinQueueConfirmationScreen() {
       const permission = await Notification.requestPermission()
       if (permission === "granted") {
         setNotificationState("granted")
-      } else {
-        setNotificationState("sms")
+        return
       }
-    } else {
-      setNotificationState("sms")
     }
+    setNotificationState("skipped")
   }
 
   const handleNoThanks = () => {
-    setNotificationState("sms")
+    setNotificationState("skipped")
   }
 
   return (
@@ -177,9 +197,9 @@ export function JoinQueueConfirmationScreen() {
                   onClick={() => handleSelectPriority(id)}
                   className={cn(
                     "flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all min-h-[44px]",
-                    isSelected 
-                      ? "bg-[#EF4444] border-[#EF4444] text-white" 
-                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                    isSelected
+                      ? "border-[#EF4444] bg-[#EF4444]/10 text-[#EF4444]"
+                      : "border-border bg-card text-foreground"
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -200,9 +220,9 @@ export function JoinQueueConfirmationScreen() {
                   onClick={() => handleSelectPriority(id)}
                   className={cn(
                     "flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all min-h-[44px]",
-                    isSelected 
-                      ? "bg-[#F59E0B] border-[#F59E0B] text-white" 
-                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                    isSelected
+                      ? "border-[#F59E0B] bg-[#F59E0B]/10 text-[#F59E0B]"
+                      : "border-border bg-card text-foreground"
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -211,72 +231,35 @@ export function JoinQueueConfirmationScreen() {
               )
             })}
           </div>
-
-          {isEmergency && (
-            <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-[#EF4444] flex items-center justify-center flex-shrink-0">
-                  <Shield className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="font-semibold text-red-800 mb-1">{t.emergencyPriorityInfoTitle}</p>
-                  <p className="text-sm text-red-700 leading-relaxed">
-                    {t.emergencyPriorityInfo}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isFastTrack && (
-            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-[#F59E0B] flex items-center justify-center flex-shrink-0">
-                  <Users className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="font-semibold text-amber-800 mb-1">{t.fastTrackInfoTitle}</p>
-                  <p className="text-sm text-amber-700 leading-relaxed">
-                    {t.fastTrackInfo}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {notificationState === "ask" && (
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6">
             <div className="flex items-start gap-3">
-              <Bell className="w-6 h-6 text-[#2563EB] flex-shrink-0 mt-0.5" />
+              <BellRing className="w-6 h-6 text-primary flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h3 className="font-semibold text-foreground mb-1">{t.getNotifiedWhenTurn}</h3>
-                <p className="text-sm text-gray-700 mb-4">
-                  {t.allowNotificationsDesc}
-                </p>
-                <Button
-                  onClick={handleAllowNotifications}
-                  className="w-full h-11 bg-[#2563EB] hover:bg-[#2563EB]/90 mb-2"
-                >
-                  {t.allowNotifications}
-                </Button>
-                <button
-                  onClick={handleNoThanks}
-                  className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
-                >
-                  {t.noThanks}
-                </button>
+                <p className="text-sm text-muted-foreground mb-4">{t.allowNotificationsDesc}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={handleAllowNotifications} className="rounded-xl">
+                    {t.allowNotifications}
+                  </Button>
+                  <Button variant="outline" onClick={handleNoThanks} className="rounded-xl">
+                    {t.smsSkip}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {notificationState === "granted" && (
-          <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mb-6">
+          <div className="bg-success/5 border border-success/20 rounded-2xl p-4 mb-6">
             <div className="flex items-start gap-3">
-              <BellRing className="w-6 h-6 text-[#10B981] flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm text-green-800">
+              <CheckCircle2 className="w-6 h-6 text-success flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-foreground mb-1">{t.allowNotifications}</h3>
+                <p className="text-sm text-muted-foreground">
                   {t.notifiedThreeAway}
                 </p>
               </div>
@@ -284,33 +267,26 @@ export function JoinQueueConfirmationScreen() {
           </div>
         )}
 
-        {notificationState === "sms" && (
-          <div className="bg-muted/50 border border-border rounded-2xl p-4 mb-6">
+        {notificationState === "skipped" && (
+          <div
+            className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-6 sticky top-0 z-10"
+            role="status"
+          >
             <div className="flex items-start gap-3">
-              <MessageSquare className="w-6 h-6 text-muted-foreground flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-semibold text-foreground">{t.getSmsInstead}</h3>
-                  <span className="text-[11px] font-medium uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
-                    {t.comingSoon}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {t.smsNotAvailableDesc}
+              <Bell className="w-6 h-6 text-amber-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-foreground mb-1">{t.notifications}</h3>
+                <p className="text-sm text-amber-900 leading-relaxed">
+                  {t.keepTabOpenForTurn}
                 </p>
-                <div className="flex gap-2">
-                  <div className="flex items-center px-3 bg-muted border border-border rounded-lg text-sm text-muted-foreground">
-                    +27
-                  </div>
-                  <Input
-                    type="tel"
-                    value=""
-                    readOnly
-                    disabled
-                    placeholder={t.smsPhonePlaceholder}
-                    className="flex-1 h-11"
-                  />
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 rounded-xl border-amber-400 text-amber-900"
+                  onClick={() => void handleAllowNotifications()}
+                >
+                  {t.allowNotifications}
+                </Button>
               </div>
             </div>
           </div>
@@ -333,9 +309,14 @@ export function JoinQueueConfirmationScreen() {
       </div>
 
       <div className="p-4 pb-8 space-y-3 border-t border-border bg-card">
+        {authError && (
+          <p className="text-sm text-destructive text-center px-2" role="alert">
+            {authError}
+          </p>
+        )}
         <Button 
-          onClick={handleConfirm}
-          disabled={!location}
+          onClick={() => void handleConfirm()}
+          disabled={!location || joining}
           className={cn(
             "w-full h-14 text-base font-semibold rounded-xl shadow-lg",
             isEmergency && "bg-[#EF4444] hover:bg-red-600 shadow-red-500/25",
@@ -343,11 +324,18 @@ export function JoinQueueConfirmationScreen() {
             !selectedPriority && "shadow-primary/25"
           )}
         >
-          {isEmergency ? t.joinAsEmergency : isFastTrack ? t.joinAsPriority : t.confirmAndJoin}
+          {joining
+            ? "Joining…"
+            : isEmergency
+              ? t.joinAsEmergency
+              : isFastTrack
+                ? t.joinAsPriority
+                : t.confirmAndJoin}
         </Button>
         <Button 
           variant="outline"
           onClick={handleCancel}
+          disabled={joining}
           className="w-full h-12 text-base rounded-xl"
         >
           {t.cancel}

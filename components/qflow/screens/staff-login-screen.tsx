@@ -16,6 +16,8 @@ export function StaffLoginScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Google OAuth is intentionally omitted on /login/staff (email + password only).
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearAuthError()

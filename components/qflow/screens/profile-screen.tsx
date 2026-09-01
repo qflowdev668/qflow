@@ -2,9 +2,12 @@
 
 import { useState } from "react"
 import { useApp } from "@/lib/app-context"
+import { apiFetch } from "@/lib/api-client"
 import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
 import { useSession } from "@/components/qflow/session-expiry-banner"
+import { MenuRow } from "@/components/qflow/user-screen-layout"
+import { WelcomeHomeScene } from "@/components/qflow/illustrations/queue-scenes"
 import { Button } from "@/components/ui/button"
 import { 
   User, 
@@ -50,8 +53,8 @@ export function ProfileScreen() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDeleteHistory = async () => {
-    await clearQueueHistory()
-    setShowDeleteHistoryDialog(false)
+    const ok = await clearQueueHistory()
+    if (ok) setShowDeleteHistoryDialog(false)
   }
 
   const handleDeleteAccount = async () => {
@@ -60,7 +63,11 @@ export function ProfileScreen() {
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      const response = await fetch("/api/account/delete", { method: "POST" })
+      const response = await apiFetch("/api/user/delete-account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      })
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
         setDeleteError(body.error ?? t.deleteAccountError)
@@ -110,7 +117,7 @@ export function ProfileScreen() {
       label: t.selectLanguage, 
       onClick: () => navigateTo("language-selection"), 
       rightContent: (
-        <span className="text-sm text-gray-500 flex items-center gap-1">
+        <span className="text-sm text-muted-foreground flex items-center gap-1">
           {currentLanguageName}
           <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </span>
@@ -122,7 +129,7 @@ export function ProfileScreen() {
       onClick: () => setShowSessionCard(true), 
       rightContent: (
         <span className="text-sm text-muted-foreground flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+          <span className="w-2 h-2 rounded-full bg-success" />
           {t.activeExpires} {formatSessionExpiry(sessionExpiresAt)}
         </span>
       )
@@ -151,62 +158,58 @@ export function ProfileScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      {/* Header */}
-      <header className="bg-primary px-4 pt-8 pb-12">
-        <h1 className="text-xl font-bold text-white mb-6">{t.navProfile}</h1>
-        
-        {/* Avatar & Info */}
-        <div className="flex items-center gap-4">
-          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center">
-            <span className="text-2xl font-bold text-primary">
+    <div className="min-h-screen bg-white pb-28">
+      {/* Panel 1 — account header + hero */}
+      <header className="px-4 pt-8 pb-4">
+        <h1 className="text-2xl font-bold text-foreground mb-5">{t.navProfile}</h1>
+
+        <div className="flex items-center gap-4 mb-5">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center shrink-0 border-2 border-primary/20">
+            <span className="text-xl font-bold text-primary">
               {currentUser?.name
                 ?.split(" ")
                 .map((n) => n[0])
                 .join("")
-                .toUpperCase() || <User className="w-8 h-8" />}
+                .toUpperCase() || <User className="w-7 h-7 text-primary" />}
             </span>
           </div>
-          <div>
-            <h2 className="text-xl font-semibold text-white">{currentUser?.name ?? t.yourProfile}</h2>
-            <p className="text-white/80 text-sm">{currentUser?.email ?? ""}</p>
-            <span className="inline-block mt-2 px-3 py-1 bg-white/20 rounded-full text-xs font-medium text-white capitalize">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-bold text-foreground truncate">{currentUser?.name ?? t.yourProfile}</h2>
+            <p className="text-sm text-muted-foreground truncate">{currentUser?.email ?? ""}</p>
+            <span className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-success">
+              <span className="w-2 h-2 rounded-full bg-success" />
               {currentUser?.role || "user"}
             </span>
           </div>
         </div>
+
+        <div className="rounded-3xl overflow-hidden border border-border/80">
+          <WelcomeHomeScene className="w-full h-auto" />
+        </div>
       </header>
 
-      {/* Content */}
-      <div className="px-4 -mt-4">
-        {/* Menu Card */}
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden mb-6">
-          {menuItems.map((item, index) => (
-            <button
+      {/* Panel 2 — settings menu */}
+      <section className="px-4 pb-4 border-b border-border/80">
+        <div className="bg-white">
+          {menuItems.map((item) => (
+            <MenuRow
               key={item.label}
+              icon={item.icon}
+              label={item.label}
+              sublabel={"sublabel" in item ? item.sublabel : undefined}
               onClick={item.onClick}
-              className={cn(
-                "w-full flex items-center justify-between px-4 py-4 hover:bg-muted transition-colors",
-                index !== menuItems.length - 1 && "border-b border-border"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <item.icon className="w-5 h-5 text-muted-foreground" />
-                <div className="text-left">
-                  <span className="font-medium text-foreground block">{item.label}</span>
-                  {"sublabel" in item && item.sublabel && (
-                    <span className="text-sm text-muted-foreground">{item.sublabel}</span>
-                  )}
-                </div>
-              </div>
-              {item.rightContent ? (
-                item.rightContent
-              ) : (
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              )}
-            </button>
+              right={
+                item.rightContent ?? (
+                  <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+                )
+              }
+            />
           ))}
         </div>
+      </section>
+
+      {/* Panel 3 — data, history, logout */}
+      <div className="px-4 pt-5">
 
         {/* My Data & Privacy Section - Part B */}
         <div className="mb-6">
@@ -216,7 +219,7 @@ export function ProfileScreen() {
           </h3>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <button
-              onClick={exportMyData}
+              onClick={() => void exportMyData()}
               className="w-full flex items-center justify-between px-4 py-4 hover:bg-muted transition-colors border-b border-border"
             >
               <div className="flex items-center gap-3">
@@ -250,9 +253,9 @@ export function ProfileScreen() {
               className="w-full flex items-center justify-between px-4 py-4 hover:bg-muted transition-colors"
             >
               <div className="flex items-center gap-3">
-                <UserX className="w-5 h-5 text-[#EF4444]" />
+                <UserX className="w-5 h-5 text-destructive" />
                 <div className="text-left">
-                  <p className="font-medium text-[#EF4444]">{t.deleteMyAccount}</p>
+                  <p className="font-medium text-destructive">{t.deleteMyAccount}</p>
                   <p className="text-sm text-muted-foreground">{t.deleteMyAccountDesc}</p>
                 </div>
               </div>
@@ -414,7 +417,7 @@ export function ProfileScreen() {
             </div>
 
             {showRefreshedToast ? (
-              <div className="flex items-center justify-center gap-2 py-6 text-[#10B981]">
+              <div className="flex items-center justify-center gap-2 py-6 text-success">
                 <CheckCircle2 className="w-6 h-6" />
                 <span className="font-medium">{t.sessionRefreshed}</span>
               </div>
@@ -424,7 +427,7 @@ export function ProfileScreen() {
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">{t.statusLabel}</span>
                     <span className="flex items-center gap-2 font-medium text-foreground">
-                      <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                      <span className="w-2 h-2 rounded-full bg-success" />
                       {t.active}
                     </span>
                   </div>
