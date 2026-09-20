@@ -1,13 +1,13 @@
 import { test, expect } from "@playwright/test"
 
 test.describe("Queue API (FastAPI integration)", () => {
-  test("Next.js queue health endpoint responds", async ({ request }) => {
+  test("queue health endpoint responds", async ({ request }) => {
     const res = await request.get("/api/queue/health")
     expect(res.ok()).toBeTruthy()
     const body = await res.json()
     expect(body).toMatchObject({
-      enabled: expect.any(Boolean),
-      status: expect.stringMatching(/operational|degraded|down/),
+      ok: true,
+      service: "qflow-api",
     })
   })
 
@@ -25,10 +25,10 @@ test.describe("Queue API (FastAPI integration)", () => {
       if (res.ok()) {
         const body = await res.json()
         expect(body.ok).toBe(true)
-        expect(body.service).toBe("qflow-queue-api")
+        expect(body.service).toBe("qflow-api")
       }
     } catch {
-      test.skip(true, "FastAPI not running — start with npm run dev:api")
+      test.skip(true, "FastAPI not running — start with npm run start")
     }
   })
 })
