@@ -76,10 +76,18 @@ if (!anon || looksPlaceholder(anon) || anon.length < 40) {
 }
 
 if (!service || looksPlaceholder(service) || service.length < 40) {
-  fail(
-    "❌ SUPABASE_SERVICE_ROLE_KEY is missing or a placeholder. Refusing to build.\n" +
-      "   Set the service role key in .env.local (server-only — never commit)."
-  )
+  if (process.env.CI === "true") {
+    // Static `next export` only bakes NEXT_PUBLIC_* into the client bundle.
+    // FastAPI uses the service role at runtime; CI builds do not need it present.
+    console.warn(
+      "⚠ SUPABASE_SERVICE_ROLE_KEY missing in CI — continuing static build with public keys only."
+    )
+  } else {
+    fail(
+      "❌ SUPABASE_SERVICE_ROLE_KEY is missing or a placeholder. Refusing to build.\n" +
+        "   Set the service role key in .env.local (server-only — never commit)."
+    )
+  }
 }
 
 console.log("✅ Supabase URL looks real:", url)
