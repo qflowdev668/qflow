@@ -16,6 +16,14 @@ import {
   googleOAuthSignInOptions,
   oauthCallbackRedirectUrl,
 } from "@/lib/auth-redirect"
+import {
+  STAFF_QUEUE_POLL_MS,
+  STAFF_QUEUE_REALTIME_DEBOUNCE_MS,
+  createDebouncedRunner,
+  parseStaffQueueResponse,
+  sortStaffQueueEntries,
+  type StaffQueueSyncStatus,
+} from "@/lib/staff-queue-pipe"
 import { createClient } from "@/lib/supabase/client"
 import {
   languageOptions,
@@ -241,7 +249,9 @@ interface AppContextType {
   ) => Promise<{ id: string; position: number } | { error: string }>
   staffLocationName: string | null
   shiftSummary: ShiftSummary
-  refreshStaffQueue: () => Promise<void>
+  refreshStaffQueue: () => Promise<boolean>
+  staffQueueSyncStatus: StaffQueueSyncStatus
+  staffQueueSyncError: string | null
   pendingVisitRating: PendingVisitRating | null
   refreshPendingRating: () => Promise<PendingVisitRating | null>
   submitVisitRating: (rating: number, comment: string) => Promise<boolean>
@@ -367,6 +377,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     avgServiceTime: null,
     queueRemaining: 0,
   })
+  const [staffQueueSyncStatus, setStaffQueueSyncStatus] =
+    useState<StaffQueueSyncStatus>("idle")
+  const [staffQueueSyncError, setStaffQueueSyncError] = useState<string | null>(null)
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null)
   const [language, setLanguageState] = useState<Language>("en")
   const [accessibility, setAccessibility] = useState<AccessibilitySettings>({
@@ -640,8 +653,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase])
 
-  // Staff view of their own location's queue (server API bypasses client RLS gaps).
-  const refreshStaffQueue = useCallback(async () => {
+  // Staff view of their assigned location (FastAPI service-role list + pipe).
+  const refreshStaffQueue = useCallback(async (): Promise<boolean> => {
     if (!currentUser?.locationId || isDemoUser.current) {
       setLocationQueue([])
       setShiftSummary({
@@ -650,18 +663,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
         avgServiceTime: null,
         queueRemaining: 0,
       })
-      return
+      setStaffQueueSyncStatus("idle")
+      setStaffQueueSyncError(
+        currentUser?.role === "staff" || currentUser?.role === "admin"
+          ? "No location assigned to this staff account. Ask an admin to assign a clinic."
+          : null
+      )
+      return false
     }
 
+    setStaffQueueSyncStatus("syncing")
     try {
       const res = await apiFetch("/api/staff/queue", { cache: "no-store" })
-      const data = (await res.json().catch(() => ({}))) as {
+      const raw = await res.json().catch(() => ({}))
+      const parsed = parseStaffQueueResponse(res.status, raw)
+      if (!parsed.ok) {
+        console.error("STAFF QUEUE PIPE FAILED:", {
+          status: parsed.status,
+          message: parsed.message,
+          body: raw,
+        })
+        setStaffQueueSyncStatus("error")
+        setStaffQueueSyncError(parsed.message)
+        return false
+      }
+
+      const data = parsed.payload as {
         entries?: StaffQueueItem[]
         summary?: ShiftSummary
         currentlyServing?: StaffServingApiPayload | null
+        locationId?: string | null
       }
-      if (!res.ok) return
-      if (data.entries) setLocationQueue(data.entries)
+
+      if (
+        data.locationId &&
+        currentUser.locationId &&
+        data.locationId !== currentUser.locationId
+      ) {
+        setStaffQueueSyncStatus("error")
+        setStaffQueueSyncError(
+          "Staff location mismatch between profile and queue API. Re-assign the staff clinic."
+        )
+        return false
+      }
+
+      if (Array.isArray(data.entries)) {
+        setLocationQueue(sortStaffQueueEntries(data.entries))
+      }
       if (data.summary) setShiftSummary(data.summary)
       if ("currentlyServing" in data) {
         setCurrentlyServing(
@@ -669,8 +717,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         )
       }
       setLastSyncedAt(new Date())
-    } catch {
-      // Keep the last known queue on transient network errors.
+      setStaffQueueSyncStatus("live")
+      setStaffQueueSyncError(null)
+      return true
+    } catch (err) {
+      console.error("STAFF QUEUE PIPE FAILED:", err)
+      setStaffQueueSyncStatus("error")
+      setStaffQueueSyncError("Could not reach the server for the staff queue.")
+      return false
     }
   }, [currentUser])
 
@@ -745,6 +799,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAuthError(err)
       window.history.replaceState({}, "", window.location.pathname)
     }
+  }, [])
+
+  // If Supabase falls back to Site URL with ?code= on a non-callback path, forward it.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const path = window.location.pathname.replace(/\/$/, "") || "/"
+    if (path === "/auth/callback") return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.get("code") && !params.get("error_description")) return
+    const qs = window.location.search
+    window.location.replace(`/auth/callback/${qs}`)
   }, [])
 
   // Track the Supabase session
@@ -1038,7 +1103,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase, currentUser, loadActiveQueue, loadLocations, loadNotifications, loadPendingRating, loadHistory])
 
-  // Staff dashboards need the whole queue at their assigned location
+  // Staff queue pipe: Realtime hint + polling fallback so customer joins always surface.
   const staffLocationId = currentUser?.locationId ?? null
 
   useEffect(() => {
@@ -1047,7 +1112,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    void refreshStaffQueue()
+    let cancelled = false
+    const debounced = createDebouncedRunner(STAFF_QUEUE_REALTIME_DEBOUNCE_MS)
+
+    const pull = () => {
+      if (!cancelled) void refreshStaffQueue()
+    }
+
+    pull()
+
+    const pollId = window.setInterval(pull, STAFF_QUEUE_POLL_MS)
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") pull()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("focus", pull)
 
     const channel = supabase
       .channel(`qflow-location-${staffLocationId}`)
@@ -1060,12 +1140,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
           filter: `location_id=eq.${staffLocationId}`,
         },
         () => {
-          void refreshStaffQueue()
+          debounced.run(pull)
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          pull()
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("STAFF QUEUE REALTIME:", status, "— polling remains active")
+          pull()
+        }
+      })
 
     return () => {
+      cancelled = true
+      debounced.cancel()
+      window.clearInterval(pollId)
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("focus", pull)
       void supabase.removeChannel(channel)
     }
   }, [supabase, staffLocationId, refreshStaffQueue])
@@ -2444,6 +2536,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       staffLocationName,
       shiftSummary,
       refreshStaffQueue,
+      staffQueueSyncStatus,
+      staffQueueSyncError,
       pendingVisitRating,
       refreshPendingRating,
       submitVisitRating,

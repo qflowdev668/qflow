@@ -20,9 +20,15 @@ port = 54323
 enabled = true
 site_url = "https://useqflow.app"
 additional_redirect_urls = [
+  "https://useqflow.app/**",
   "https://useqflow.app/auth/callback",
+  "https://useqflow.app/auth/callback/",
+  "http://127.0.0.1:8000/**",
   "http://127.0.0.1:8000/auth/callback",
+  "http://127.0.0.1:8000/auth/callback/",
+  "http://localhost:8000/**",
   "http://localhost:8000/auth/callback",
+  "http://localhost:8000/auth/callback/",
 ]
 jwt_expiry = 3600
 enable_signup = true

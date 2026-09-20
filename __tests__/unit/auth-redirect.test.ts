@@ -4,23 +4,23 @@ import {
 } from "@/lib/auth-redirect"
 
 describe("auth redirect URLs", () => {
-  it("builds callback URL from an explicit origin", () => {
+  it("builds callback URL from an explicit origin with trailing slash", () => {
     expect(oauthCallbackRedirectUrl("https://useqflow.app")).toBe(
-      "https://useqflow.app/auth/callback"
+      "https://useqflow.app/auth/callback/"
     )
     expect(oauthCallbackRedirectUrl("https://useqflow.app/")).toBe(
-      "https://useqflow.app/auth/callback"
+      "https://useqflow.app/auth/callback/"
     )
   })
 
   it("never hardcodes localhost:3000", () => {
     const opts = googleOAuthSignInOptions("https://useqflow.app")
-    expect(opts.options.redirectTo).toBe("https://useqflow.app/auth/callback")
+    expect(opts.options.redirectTo).toBe("https://useqflow.app/auth/callback/")
     expect(opts.options.redirectTo).not.toContain("localhost:3000")
   })
 
   it("uses window.location.origin in the browser", () => {
-    expect(oauthCallbackRedirectUrl()).toBe(`${window.location.origin}/auth/callback`)
+    expect(oauthCallbackRedirectUrl()).toBe(`${window.location.origin}/auth/callback/`)
     expect(oauthCallbackRedirectUrl()).not.toContain("localhost:3000")
   })
 
@@ -28,7 +28,7 @@ describe("auth redirect URLs", () => {
     const origin = "https://useqflow.app"
     const opts = googleOAuthSignInOptions(origin)
     expect(opts.provider).toBe("google")
-    expect(opts.options.redirectTo).toBe(`${origin}/auth/callback`)
+    expect(opts.options.redirectTo).toBe(`${origin}/auth/callback/`)
     expect(opts.options.queryParams).toEqual({ prompt: "select_account" })
   })
 })
@@ -44,7 +44,7 @@ describe("loginWithGoogle redirect contract", () => {
       expect.objectContaining({
         provider: "google",
         options: expect.objectContaining({
-          redirectTo: "https://useqflow.app/auth/callback",
+          redirectTo: "https://useqflow.app/auth/callback/",
         }),
       })
     )
