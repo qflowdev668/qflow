@@ -1517,7 +1517,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           email?: string
         }
         if (!res.ok) {
-          setAuthError(formatApiErrorMessage(data, "Could not start staff sign-in."))
+          const message = formatApiErrorMessage(data, "Could not start staff sign-in.")
+          setAuthError(
+            message === "Could not start staff sign-in."
+              ? "Could not start staff sign-in. Check the exact email from Admin → Staff and the temporary password."
+              : message
+          )
           return false
         }
         const nextEmail = (data.email || normalized).trim().toLowerCase()

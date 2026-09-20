@@ -8,9 +8,9 @@ from qflow_api.supabase_admin import rest_insert
 
 RATE_LIMIT_MESSAGE = "Too many attempts. Try again in 15 minutes."
 IDENTITY_WINDOW_MS = 15 * 60 * 1000
-IDENTITY_MAX = 3
+IDENTITY_MAX = 8
 IP_WINDOW_MS = 60 * 60 * 1000
-IP_MAX = 10
+IP_MAX = 30
 
 _hits: dict[str, list[float]] = {}
 

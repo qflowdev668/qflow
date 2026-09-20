@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from qflow_api.admin_access import get_admin_otp_config, is_bootstrap_admin_phone, normalize_sa_phone
 from qflow_api.admin_auth import require_admin_dep
 from qflow_api.supabase_admin import rest_get, rest_get_one, rest_insert, rest_patch, rest_upsert
-from qflow_api.supabase_auth_admin import create_user, set_user_banned, update_user
+from qflow_api.supabase_auth_admin import create_user, set_user_banned, sign_in_with_password, update_user
 from qflow_api.user_cleanup import purge_user_account
 
 router = APIRouter(tags=["admin"])
@@ -34,6 +34,7 @@ class StaffCreateBody(BaseModel):
 class StaffPatchBody(BaseModel):
     id: str = ""
     locationId: str | None = None
+    password: str | None = None
     removeStaff: bool = False  # legacy alias for deleteStaff
     deleteStaff: bool = False
     suspendStaff: bool = False
@@ -309,6 +310,18 @@ async def create_staff(
 
     await set_user_banned(user_id, banned=False)
 
+    # Prove Auth will accept this password before returning success to the admin UI.
+    try:
+        await sign_in_with_password(email, password)
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Staff profile was created but the password could not be used to sign in. "
+                f"Reset the password from Manage access. ({exc.detail})"
+            ),
+        ) from exc
+
     await rest_insert(
         "audit_log",
         {
@@ -334,8 +347,42 @@ async def patch_staff(
         "profiles",
         {"id": f"eq.{body.id}", "select": "id,name,email,role,staff_suspended_at"},
     )
-    if not existing or existing.get("role") != "staff":
+    if not profile or profile.get("role") != "staff":
         raise HTTPException(status_code=404, detail="Staff member not found.")
+
+    if body.password is not None and body.password.strip():
+        strength = validate_strong_password(body.password)
+        if strength:
+            raise HTTPException(status_code=400, detail=strength)
+        await update_user(
+            existing["id"],
+            password=body.password,
+            email_confirm=True,
+            app_metadata={"profile_role": "staff"},
+        )
+        await set_user_banned(existing["id"], banned=False)
+        # Confirm Auth accepts the new password before telling the admin it worked.
+        try:
+            await sign_in_with_password(existing["email"], body.password)
+        except HTTPException as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Password was written but could not be verified for sign-in. "
+                    f"({exc.detail})"
+                ),
+            ) from exc
+        await rest_insert(
+            "audit_log",
+            {
+                "actor_id": admin["id"],
+                "actor_name": admin["name"],
+                "action": "Staff Password Reset",
+                "detail": f"{existing['name']} <{existing['email']}> password reset by admin",
+            },
+            prefer="return=minimal",
+        )
+        return {"ok": True}
 
     delete_staff = body.deleteStaff or body.removeStaff
 

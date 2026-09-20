@@ -70,32 +70,36 @@ async def staff_login(request: Request, body: StaffLoginBody) -> dict[str, Any]:
     if not body.password:
         raise HTTPException(status_code=400, detail="Password is required.")
 
-    await enforce_otp_rate_limit(
-        request, identity=email, identity_kind="email", route="/api/staff/login"
-    )
-
     if not get_resend_api_key():
         raise HTTPException(
             status_code=501,
-            detail="Resend is not configured. Add RESEND_API_KEY to .env.local.",
+            detail="Resend is not configured. Add RESEND_API_KEY to environment.",
         )
 
+    # Password check first — failed attempts must not burn the OTP rate limit.
     auth_data = await sign_in_with_password(email, body.password)
     user_id = (auth_data.get("user") or {}).get("id")
     if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password. Use the exact staff email from Admin → Staff.",
+        )
 
     profile = await rest_get_one("profiles", {"id": f"eq.{user_id}", "select": "id,role,staff_suspended_at"})
     if not profile or profile.get("role") != "staff":
         raise HTTPException(
             status_code=403,
-            detail="This account is not a staff account. Staff must sign in with the Staff sign-in option.",
+            detail="This account is not a staff account. Ask an admin to create/promote it under Admin → Staff.",
         )
     if profile.get("staff_suspended_at"):
         raise HTTPException(
             status_code=403,
             detail="This staff account is suspended. Contact your administrator.",
         )
+
+    await enforce_otp_rate_limit(
+        request, identity=email, identity_kind="email", route="/api/staff/login"
+    )
 
     link_data = await generate_link(email, "magiclink")
     code = extract_email_otp(link_data)

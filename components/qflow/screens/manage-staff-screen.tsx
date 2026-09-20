@@ -51,6 +51,8 @@ export function ManageStaffScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [manageTarget, setManageTarget] = useState<StaffMember | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [resetPassword, setResetPassword] = useState("")
+  const [showResetPassword, setShowResetPassword] = useState(false)
 
   const loadStaff = useCallback(async () => {
     setLoading(true)
@@ -134,6 +136,35 @@ export function ManageStaffScreen() {
     }
     showToast(t.staffUpdated)
     await loadStaff()
+  }
+
+  const resetStaffPassword = async (member: StaffMember) => {
+    setError(null)
+    if (!isStrongPassword(resetPassword)) {
+      setError(t.passwordTooWeak)
+      return
+    }
+    setActionLoading(true)
+    try {
+      const res = await apiFetch("/api/admin/staff", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: member.id, password: resetPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? "Could not reset staff password.")
+        return
+      }
+      setResetPassword("")
+      setShowResetPassword(false)
+      setManageTarget(null)
+      showToast("Staff password updated — they can sign in now.")
+    } catch {
+      setError("Could not reset staff password.")
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   const patchStaff = async (member: StaffMember, action: StaffPatchAction) => {
@@ -414,6 +445,37 @@ export function ManageStaffScreen() {
                 {actionLoading ? "..." : t.suspendStaff}
               </Button>
             )}
+
+            <div className="mb-3 rounded-xl border border-border p-3 space-y-2">
+              <p className="text-sm font-medium text-foreground">Reset sign-in password</p>
+              <div className="relative">
+                <Input
+                  type={showResetPassword ? "text" : "password"}
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  placeholder="New temporary password"
+                  className="pr-10"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  onClick={() => setShowResetPassword((v) => !v)}
+                  aria-label="Toggle password visibility"
+                >
+                  {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <PasswordRules password={resetPassword} />
+              <Button
+                type="button"
+                className="w-full"
+                disabled={actionLoading || !resetPassword}
+                onClick={() => void resetStaffPassword(manageTarget)}
+              >
+                Save new password
+              </Button>
+            </div>
 
             <Button
               type="button"

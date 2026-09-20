@@ -19,7 +19,17 @@ async def sign_in_with_password(email: str, password: str) -> dict[str, Any]:
         )
     if response.status_code != 200:
         payload = response.json() if response.content else {}
-        message = payload.get("error_description") or payload.get("msg") or "Invalid email or password."
+        message = (
+            payload.get("error_description")
+            or payload.get("msg")
+            or payload.get("error")
+            or "Invalid email or password."
+        )
+        if isinstance(message, str) and "invalid" in message.lower():
+            message = (
+                "Invalid email or password. Check the exact staff email from Admin → Staff "
+                "and the temporary password (must include an uppercase letter)."
+            )
         raise HTTPException(status_code=401, detail=message)
     return response.json()
 
