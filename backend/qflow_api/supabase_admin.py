@@ -1,12 +1,15 @@
 from typing import Any
 
 import httpx
+from fastapi import HTTPException
 
 from qflow_api.config import settings
 
 
 def service_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
-    key = settings.supabase_service_role_key or settings.supabase_anon_key
+    key = (settings.supabase_service_role_key or settings.supabase_anon_key or "").strip()
+    if not key or not settings.supabase_url.strip():
+        raise HTTPException(status_code=501, detail="Supabase is not configured.")
     headers = {
         "apikey": key,
         "Authorization": f"Bearer {key}",

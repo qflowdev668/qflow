@@ -22,6 +22,17 @@ const eslintConfig = defineConfig([
       "no-console": "off",
     },
   },
+  {
+    files: [
+      "__tests__/**/*.{ts,tsx}",
+      "e2e/**/*.{ts,tsx}",
+      "jest.setup.ts",
+      "jest.config.*",
+    ],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   globalIgnores([
     ".next/**",
     "out/**",
