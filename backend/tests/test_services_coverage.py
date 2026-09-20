@@ -29,6 +29,7 @@ from qflow_api.admin_auth import (
 from qflow_api.auth import get_current_user, jwt_exp_unverified, supabase_headers, verify_supabase_token
 from qflow_api.queue_service import _friendly_join_error, join_queue, leave_queue
 from qflow_api.rate_limit import (
+    IDENTITY_MAX,
     RATE_LIMIT_MESSAGE,
     _hits,
     client_ip,
@@ -102,7 +103,7 @@ async def test_otp_rate_limit_blocks_after_max():
     _hits.clear()
     req = _request(ip="10.0.0.99")
     identity = f"rate-test-{time.time()}"
-    for _ in range(3):
+    for _ in range(IDENTITY_MAX):
         result = await enforce_otp_rate_limit(
             req, identity=identity, identity_kind="email", route="/t"
         )
@@ -805,6 +806,11 @@ def test_admin_staff_list_create_patch(monkeypatch):
                 "qflow_api.routers.admin.set_user_banned",
                 new_callable=AsyncMock,
             ),
+            patch(
+                "qflow_api.routers.admin.sign_in_with_password",
+                new_callable=AsyncMock,
+                return_value={"access_token": "t"},
+            ),
             patch("qflow_api.routers.admin.rest_upsert", new_callable=AsyncMock, return_value={}),
             patch("qflow_api.routers.admin.rest_insert", new_callable=AsyncMock, return_value={}),
             patch(
@@ -819,7 +825,7 @@ def test_admin_staff_list_create_patch(monkeypatch):
                 json={
                     "name": "New Staff",
                     "email": "new@x.com",
-                    "password": "Password1",
+                    "password": "Password1!",
                     "locationId": "loc",
                 },
             )

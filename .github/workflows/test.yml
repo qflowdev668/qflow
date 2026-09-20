@@ -43,6 +43,7 @@ jobs:
         run: python -m pytest
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       - name: Upload coverage
@@ -60,7 +61,18 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
       - run: npm ci
+      - name: Install backend
+        run: pip install -r backend/requirements.txt
+      - name: Minimal static export for FastAPI
+        run: |
+          mkdir -p out
+          printf '%s\n' '<!doctype html><html><head><title>QFlow</title></head><body>ok</body></html>' > out/index.html
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --project=chromium
         env:
@@ -68,6 +80,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: failure()

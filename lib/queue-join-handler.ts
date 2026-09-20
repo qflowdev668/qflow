@@ -16,6 +16,19 @@ export type QueueJoinResult = {
   locationName: string
 }
 
+/**
+ * Optional post-join SMS. Kept as a no-op until AfricasTalking delivery is wired;
+ * FastAPI join still returns successfully without blocking on SMS.
+ */
+export async function sendJoinSmsIfOptedIn(
+  _userId: string,
+  _locationName: string,
+  _position: number,
+  _waitMinutes: number
+): Promise<void> {
+  return
+}
+
 /** Original Next.js queue join — used when FastAPI is off or unreachable. */
 export async function handleQueueJoinInline(
   request: Request

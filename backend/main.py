@@ -20,7 +20,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -143,22 +143,29 @@ def _exported_page_redirect(full_path: str) -> str | None:
 
 
 if STATIC_DIR.is_dir() and any(STATIC_DIR.iterdir()):
+    _static_ready = True
+else:
+    _static_ready = False
 
-    @app.get("/{full_path:path}", response_model=None)
-    async def serve_frontend(full_path: str) -> FileResponse | RedirectResponse:
-        if full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="Not found")
 
-        redirected = _exported_page_redirect(full_path)
-        if redirected:
-            return RedirectResponse(url=redirected, status_code=307)
+@app.get("/{full_path:path}", response_model=None)
+async def serve_frontend(full_path: str) -> FileResponse | RedirectResponse:
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
 
-        resolved = _resolve_static(full_path)
-        if resolved:
-            return FileResponse(resolved)
+    redirected = _exported_page_redirect(full_path)
+    if redirected:
+        return RedirectResponse(url=redirected, status_code=307)
 
-        fallback = STATIC_DIR / "index.html"
-        if fallback.is_file():
-            return FileResponse(fallback)
+    if not _static_ready:
+        raise HTTPException(status_code=404, detail="Not found")
 
-        raise HTTPException(status_code=503, detail="Frontend index missing.")
+    resolved = _resolve_static(full_path)
+    if resolved:
+        return FileResponse(resolved)
+
+    fallback = STATIC_DIR / "index.html"
+    if fallback.is_file():
+        return FileResponse(fallback)
+
+    raise HTTPException(status_code=503, detail="Frontend index missing.")

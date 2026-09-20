@@ -10,6 +10,14 @@ from qflow_api.supabase_admin import rest_get, rest_get_one, rest_insert, rest_p
 WAITING_STATUSES = ("waiting", "almost", "your-turn")
 
 
+def priority_rank(priority: str | None) -> int:
+    if priority == "emergency":
+        return 0
+    if priority == "fast-track":
+        return 1
+    return 2
+
+
 def minutes_since(iso: str) -> int:
     joined = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     delta = datetime.now(timezone.utc) - joined.astimezone(timezone.utc)
@@ -39,12 +47,20 @@ async def load_next_waiting(location_id: str) -> dict[str, Any] | None:
         {
             "location_id": f"eq.{location_id}",
             "status": f"in.({','.join(WAITING_STATUSES)})",
-            "select": "position,joined_at",
+            "select": "position,joined_at,priority",
             "order": "position.asc",
-            "limit": "1",
         },
     )
-    return rows[0] if rows else None
+    if not rows:
+        return None
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            priority_rank(row.get("priority")),
+            int(row.get("position") or 0),
+        ),
+    )
+    return rows[0]
 
 
 async def find_active_serving(location_id: str) -> dict[str, Any] | None:
@@ -115,6 +131,15 @@ async def get_staff_queue(staff: StaffContext) -> dict[str, Any]:
         },
     )
 
+    # Priority first so a new emergency join is never buried under older standards.
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            priority_rank(row.get("priority")),
+            int(row.get("position") or 0),
+        ),
+    )
+
     entries: list[dict[str, Any]] = []
     for row in rows:
         profile_name = None
@@ -169,6 +194,8 @@ async def get_staff_queue(staff: StaffContext) -> dict[str, Any]:
         currently_serving = build_serving_payload(serving, name, nxt)
 
     return {
+        "ok": True,
+        "locationId": location_id,
         "entries": entries,
         "currentlyServing": currently_serving,
         "summary": {
@@ -260,11 +287,17 @@ async def claim_entry(staff: StaffContext, entry_id: str | None = None) -> dict[
                     "status": f"in.({','.join(WAITING_STATUSES)})",
                     "select": "*",
                     "order": "position.asc",
-                    "limit": "1",
                 },
             )
             if not rows:
                 raise HTTPException(status_code=404, detail="No one is waiting in this queue.")
+            rows = sorted(
+                rows,
+                key=lambda row: (
+                    priority_rank(row.get("priority")),
+                    int(row.get("position") or 0),
+                ),
+            )
             entry = rows[0]
 
         now = datetime.now(timezone.utc).isoformat()

@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     active_staff: int = 2
 
     @property
+    def allowed_origins(self) -> list[str]:
+        raw = __import__("os").environ.get("ALLOWED_ORIGINS", "http://127.0.0.1:8000")
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+    @property
     def supabase_rest_url(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/rest/v1"
 
@@ -29,8 +34,16 @@ class Settings(BaseSettings):
 
 
 settings = Settings(
-    supabase_url=__import__("os").environ.get("NEXT_PUBLIC_SUPABASE_URL", ""),
-    supabase_anon_key=__import__("os").environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", ""),
+    supabase_url=(
+        __import__("os").environ.get("NEXT_PUBLIC_SUPABASE_URL")
+        or __import__("os").environ.get("SUPABASE_URL")
+        or ""
+    ),
+    supabase_anon_key=(
+        __import__("os").environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        or __import__("os").environ.get("SUPABASE_ANON_KEY")
+        or ""
+    ),
     supabase_service_role_key=__import__("os").environ.get("SUPABASE_SERVICE_ROLE_KEY", ""),
     queue_api_internal_secret=__import__("os").environ.get("QUEUE_API_INTERNAL_SECRET", ""),
 )

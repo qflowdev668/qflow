@@ -466,7 +466,16 @@ export function ManageStaffScreen() {
                   {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <PasswordRules password={resetPassword} />
+              <PasswordRules
+                password={resetPassword}
+                labels={{
+                  passwordRuleLength: t.passwordRuleLength,
+                  passwordRuleLower: t.passwordRuleLower,
+                  passwordRuleUpper: t.passwordRuleUpper,
+                  passwordRuleNumber: t.passwordRuleNumber,
+                  passwordRuleSymbol: t.passwordRuleSymbol,
+                }}
+              />
               <Button
                 type="button"
                 className="w-full"

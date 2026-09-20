@@ -347,7 +347,7 @@ async def patch_staff(
         "profiles",
         {"id": f"eq.{body.id}", "select": "id,name,email,role,staff_suspended_at"},
     )
-    if not profile or profile.get("role") != "staff":
+    if not existing or existing.get("role") != "staff":
         raise HTTPException(status_code=404, detail="Staff member not found.")
 
     if body.password is not None and body.password.strip():

@@ -33,7 +33,7 @@ describe("resend helpers", () => {
   })
 
   it("does not redirect in production", () => {
-    process.env.NODE_ENV = "production"
+    process.env = { ...process.env, NODE_ENV: "production" }
     process.env.RESEND_DEV_REDIRECT_TO = "qflowdev668@gmail.com"
     const result = resolveResendRecipient("zanini@mailsac.com")
     expect(result.to).toBe("zanini@mailsac.com")

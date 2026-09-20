@@ -78,7 +78,12 @@ describe("Coverage smoke — authenticated & staff screens", () => {
     ["AuditLogScreen", () => <AuditLogScreen />],
     ["ManageStaffScreen", () => <ManageStaffScreen />],
     ["BottomNav", () => <BottomNav />],
-    ["KioskLanguageBar", () => <KioskLanguageBar />],
+    [
+      "KioskLanguageBar",
+      () => (
+        <KioskLanguageBar selectedLanguage="en" onLanguageChange={() => undefined} />
+      ),
+    ],
     [
       "ErrorBoundary",
       () => (
