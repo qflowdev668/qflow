@@ -59,6 +59,7 @@ from qflow_api.staff_service import (
     resolve_customer_name,
 )
 from qflow_api.supabase_admin import rest_get, rest_get_one, rest_insert, rest_patch, service_headers
+from qflow_api.config import settings as app_settings
 from qflow_api.supabase_auth_admin import (
     create_user,
     delete_user,
@@ -523,7 +524,26 @@ async def test_require_admin_and_password_reset_tokens():
 # --- supabase admin / auth admin / resend ---
 
 
-def test_service_headers_and_validate_password():
+def _configure_supabase_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        app_settings,
+        "supabase_url",
+        "https://abcdefghijklmnopqrst.supabase.co",
+    )
+    monkeypatch.setattr(
+        app_settings,
+        "supabase_service_role_key",
+        "test-service-role-key-" + ("x" * 40),
+    )
+    monkeypatch.setattr(
+        app_settings,
+        "supabase_anon_key",
+        "test-anon-key-" + ("y" * 40),
+    )
+
+
+def test_service_headers_and_validate_password(monkeypatch):
+    _configure_supabase_for_tests(monkeypatch)
     headers = service_headers({"Prefer": "return=minimal"})
     assert "Authorization" in headers
     assert headers["Prefer"] == "return=minimal"
@@ -532,7 +552,8 @@ def test_service_headers_and_validate_password():
 
 
 @pytest.mark.asyncio
-async def test_rest_helpers_success_and_error():
+async def test_rest_helpers_success_and_error(monkeypatch):
+    _configure_supabase_for_tests(monkeypatch)
     ok = MagicMock()
     ok.status_code = 200
     ok.json.return_value = [{"id": "1"}]
@@ -575,7 +596,8 @@ async def test_rest_helpers_success_and_error():
 
 
 @pytest.mark.asyncio
-async def test_supabase_auth_admin_wrappers():
+async def test_supabase_auth_admin_wrappers(monkeypatch):
+    _configure_supabase_for_tests(monkeypatch)
     ok = MagicMock()
     ok.status_code = 200
     ok.json.return_value = {"access_token": "t", "user": {"id": "u"}}
