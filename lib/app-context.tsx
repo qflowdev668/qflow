@@ -682,8 +682,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setStaffQueueSyncStatus((prev) => (prev === "live" ? "live" : "syncing"))
     try {
-      const res = await apiFetch("/api/staff/queue", { cache: "no-store" })
-      const raw = await res.json().catch(() => ({}))
+      let res: Response | null = null
+      let raw: unknown = {}
+      // One retry — Render free tier / Cloudflare often returns a transient 502.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          res = await apiFetch("/api/staff/queue", { cache: "no-store" })
+          raw = await res.json().catch(() => ({}))
+          if (res.ok || (res.status !== 502 && res.status < 500)) break
+        } catch (err) {
+          if (attempt === 1) throw err
+          raw = {}
+          res = null
+        }
+        await new Promise((r) => setTimeout(r, 800))
+      }
+      if (!res) {
+        setStaffQueueSyncStatus("error")
+        setStaffQueueSyncError("Could not reach the server for the staff queue.")
+        return false
+      }
       const parsed = parseStaffQueueResponse(res.status, raw)
       if (!parsed.ok) {
         console.error("STAFF QUEUE PIPE FAILED:", {
