@@ -164,6 +164,32 @@ async def serve_frontend(full_path: str) -> FileResponse | RedirectResponse:
     if resolved:
         return FileResponse(resolved)
 
+    # Missing assets must 404 — SPA fallback of index.html makes browsers throw
+    # "expected expression, got '<'" when an extension requests /script.js etc.
+    asset_exts = (
+        ".js",
+        ".css",
+        ".map",
+        ".json",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".webp",
+        ".ico",
+        ".txt",
+        ".xml",
+        ".webmanifest",
+    )
+    lower = full_path.lower()
+    if any(lower.endswith(ext) for ext in asset_exts):
+        raise HTTPException(status_code=404, detail="Not found")
+
     fallback = STATIC_DIR / "index.html"
     if fallback.is_file():
         return FileResponse(fallback)

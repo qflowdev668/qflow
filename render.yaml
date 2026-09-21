@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: qflow
+    env: python
+    buildCommand: "npm install && npm run build:web && pip install -r backend/requirements.txt"
+    startCommand: "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      # Until a Resend domain is verified, redirect all OTP mail to your inbox:
+      - key: RESEND_DEV_REDIRECT_TO
+        sync: false
+      - key: ADMIN_OTP_PHONE
+        sync: false
+      - key: ADMIN_OTP_EMAIL
+        sync: false
+      - key: NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: PUSH_DISPATCH_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://useqflow.app
+      - key: ALLOWED_ORIGINS
+        value: https://useqflow.app
+      - key: NEXT_PUBLIC_ADMIN_UNLOCK_PHRASE
+        sync: false

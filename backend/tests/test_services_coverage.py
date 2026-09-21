@@ -633,11 +633,15 @@ def test_resend_helpers(monkeypatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_test")
     assert get_resend_api_key() == "re_test"
     assert "QFlow" in get_resend_from()
-    monkeypatch.setenv("NODE_ENV", "development")
+    monkeypatch.setenv("NODE_ENV", "production")
     monkeypatch.setenv("RESEND_DEV_REDIRECT_TO", "dev@example.com")
     to, original = resolve_resend_recipient("user@example.com")
     assert to == "dev@example.com"
     assert original == "user@example.com"
+    monkeypatch.delenv("RESEND_DEV_REDIRECT_TO", raising=False)
+    to2, original2 = resolve_resend_recipient("user@example.com")
+    assert to2 == "user@example.com"
+    assert original2 is None
     assert "test mode" in format_resend_error("only send testing emails to your own email").lower()
 
 

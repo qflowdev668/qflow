@@ -15,9 +15,15 @@ def get_resend_from() -> str:
 
 
 def resolve_resend_recipient(intended: str) -> tuple[str, str | None]:
+    """Return (delivery_address, original_if_redirected).
+
+    When RESEND_DEV_REDIRECT_TO is set, all OTP/reset mail goes there. That env
+    is the switch — clear it once a Resend domain is verified and real
+    recipients should receive mail (including on production).
+    """
     normalized = intended.strip().lower()
     redirect = os.environ.get("RESEND_DEV_REDIRECT_TO", "").strip().lower()
-    if os.environ.get("NODE_ENV") != "production" and redirect and normalized != redirect:
+    if redirect and normalized != redirect:
         return redirect, normalized
     return normalized, None
 
@@ -59,7 +65,9 @@ async def _send_email(*, to: str, subject: str, text: str, html: str) -> None:
     if response.status_code >= 400:
         payload = response.json() if response.content else {}
         message = payload.get("message") or response.text or "Failed to send email via Resend."
-        raise HTTPException(status_code=502, detail=format_resend_error(message))
+        # Use 400 (not 502): Cloudflare replaces origin 502 bodies with an HTML
+        # gateway page, which hides the real Resend error from the staff UI.
+        raise HTTPException(status_code=400, detail=format_resend_error(message))
 
 
 async def send_login_code_email(to: str, code: str, kind: str = "admin") -> None:

@@ -16,6 +16,7 @@ import {
   googleOAuthSignInOptions,
   oauthCallbackRedirectUrl,
 } from "@/lib/auth-redirect"
+import { unlockPrivateAccess } from "@/lib/private-access"
 import {
   STAFF_QUEUE_POLL_MS,
   STAFF_QUEUE_REALTIME_DEBOUNCE_MS,
@@ -847,6 +848,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAuthError(
           "Staff must sign in with email and password, then enter the code sent to your email."
         )
+        unlockPrivateAccess("staff")
         navigateTo("staff-login")
         return true
       }
@@ -854,6 +856,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await supabase.auth.signOut()
         setCurrentUser(null)
         setAuthError("Admins must sign in with cellphone number, then the email code.")
+        unlockPrivateAccess("admin")
         navigateTo("admin-phone-otp")
         return true
       }
@@ -1594,10 +1597,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       clearAuthError()
       const storedFlow = readOtpLoginFlow()
+      const staffEmailHint =
+        typeof window !== "undefined"
+          ? window.sessionStorage.getItem("qflow_staff_otp_email")
+          : null
+      // Prefer explicit staff/admin UI state, then tab-scoped flow, then staff email hint
+      // (console / deep-link recovery on /login/otp without going through staff-login).
       const activeFlow: OtpLoginFlow =
         emailOtpBackScreen === "staff-login" || emailOtpBackScreen === "admin-phone-otp"
           ? emailOtpBackScreen
-          : storedFlow ?? "email-otp"
+          : storedFlow === "staff-login" || storedFlow === "admin-phone-otp"
+            ? storedFlow
+            : staffEmailHint
+              ? "staff-login"
+              : storedFlow ?? "email-otp"
       const isStaffFlow = activeFlow === "staff-login"
       const isAdminFlow = activeFlow === "admin-phone-otp"
 
@@ -1766,6 +1779,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await supabase.auth.signOut()
           setCurrentUser(null)
           setAuthError("This login code is not for a staff account.")
+          unlockPrivateAccess("staff")
           navigateTo("staff-login")
           return
         }
@@ -1774,11 +1788,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await supabase.auth.signOut()
           setCurrentUser(null)
           setAuthError("Admins must sign in with cellphone number, then the email code.")
+          unlockPrivateAccess("admin")
           navigateTo("admin-phone-otp")
           return
         }
 
-        if (isStaffFlow) confirmStaffOtp()
+        // Staff profiles must always mark OTP confirmed before leaving /login/otp,
+        // including recovery flows that only set sessionStorage (not React state).
+        if (profile?.role === "staff") confirmStaffOtp()
 
         await loadUserData(user.id)
         if (profile) goToRoleHome(profile.role, true)
