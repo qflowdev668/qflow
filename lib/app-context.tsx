@@ -58,6 +58,7 @@ import {
   privilegedGoogleLoginScreen,
   signOutIfPrivilegedGoogle,
 } from "@/lib/privileged-session-guard"
+import { isGoogleAuthUser } from "@/lib/auth-providers"
 import { apiFetch, formatApiErrorMessage } from "@/lib/api-client"
 import { onSessionExpiresInHeader } from "@/lib/session-expiry-signal"
 import {
@@ -831,6 +832,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (profile.role === "staff" && staffOtpIsConfirmed()) return false
       if (profile.role === "admin" && adminOtpIsConfirmed()) return false
 
+      // Email/password staff who just finished OTP may race ahead of the
+      // sessionStorage flag on a delayed SIGNED_IN. Never reject email-provider
+      // staff while the staff OTP flow marker is still set for this tab.
+      if (
+        profile.role === "staff" &&
+        readOtpLoginFlow() === "staff-login" &&
+        !isGoogleAuthUser(authUser)
+      ) {
+        confirmStaffOtp()
+        return false
+      }
+
       if (
         await signOutIfPrivilegedGoogle(supabase, authUser, profile.role, {
           respectOtpBypass: true,
@@ -926,30 +939,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (event === "SIGNED_OUT") {
-          if (!privilegedLoginInProgress.current) {
-            window.setTimeout(() => {
-              if (privilegedLoginInProgress.current) return
-              void supabase.auth.getSession().then(({ data: sessionData }) => {
-                if (sessionData.session) return
-                revokeStaffOtp()
-                revokeAdminOtp()
-                clearOtpLoginFlow()
-              })
-            }, 150)
-          }
-          setCurrentUser(null)
-          setActiveQueue(null)
-          setNotifications([])
-          setQueueHistory([])
-          setSessionExpiresAt(null)
-          const onReset =
-            typeof window !== "undefined" &&
-            window.location.pathname.startsWith("/forgot-password")
-          if (!isDemoUser.current && !onReset) {
-            if (!PRE_AUTH_SCREENS.includes(screenFromPath(pathnameRef.current))) {
-              navigateTo("login")
-            }
-          }
+          // Supabase can emit a transient SIGNED_OUT during verifyOtp / token
+          // swap. Clearing the user and navigating immediately bounces staff
+          // off /staff ~1–2s after a successful OTP login. Wait, then confirm
+          // the session is actually gone.
+          const signedOutDuringPrivilegedLogin = privilegedLoginInProgress.current
+          window.setTimeout(() => {
+            if (cancelled) return
+            void supabase.auth.getSession().then(({ data: sessionData }) => {
+              if (cancelled) return
+              if (sessionData.session) {
+                // Transient — session already restored.
+                return
+              }
+              if (
+                privilegedLoginInProgress.current ||
+                signedOutDuringPrivilegedLogin
+              ) {
+                // Still inside staff/admin OTP verify — ignore this SIGNED_OUT.
+                return
+              }
+              revokeStaffOtp()
+              revokeAdminOtp()
+              clearOtpLoginFlow()
+              setCurrentUser(null)
+              setActiveQueue(null)
+              setNotifications([])
+              setQueueHistory([])
+              setSessionExpiresAt(null)
+              const onReset =
+                typeof window !== "undefined" &&
+                window.location.pathname.startsWith("/forgot-password")
+              if (!isDemoUser.current && !onReset) {
+                if (
+                  !PRE_AUTH_SCREENS.includes(screenFromPath(pathnameRef.current))
+                ) {
+                  navigateTo("login")
+                }
+              }
+            })
+          }, 300)
           return
         }
 
@@ -1761,7 +1790,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         setEmailOtpEmail(null)
         setEmailOtpBackScreen("email-otp")
-        clearOtpLoginFlow()
+        // Keep staff-login flow marker briefly so a delayed SIGNED_IN cannot
+        // treat this tab as an unconfirmed privileged session.
+        if (isStaffFlow) {
+          window.setTimeout(() => clearOtpLoginFlow(), 2500)
+        } else {
+          clearOtpLoginFlow()
+        }
         if (typeof window !== "undefined") {
           window.sessionStorage.removeItem("qflow_staff_otp_email")
         }
@@ -1801,9 +1836,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (profile) goToRoleHome(profile.role, true)
       } finally {
         emailOtpVerifyInFlight.current = false
+        // Keep the privileged gate closed long enough that delayed SIGNED_IN /
+        // SIGNED_OUT events from verifyOtp cannot treat this as an unconfirmed
+        // staff session and bounce /staff → /login.
         window.setTimeout(() => {
           privilegedLoginInProgress.current = false
-        }, 750)
+        }, 2500)
       }
     },
     [
