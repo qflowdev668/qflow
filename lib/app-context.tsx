@@ -1986,7 +1986,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
 
           if (!res.ok || !data.id || !data.ticketNumber) {
-            setAuthError(data.error ?? "Could not call this customer.")
+            const message =
+              formatApiErrorMessage(data, "") ||
+              (res.status >= 500
+                ? "Server timed out while calling this customer. Tap Call again to open the serving screen if they were claimed."
+                : "Could not call this customer.")
+            setAuthError(message)
+            await refreshStaffQueue()
             return
           }
 
@@ -2096,6 +2102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
+        clearAuthError()
         const res = await apiFetch("/api/staff/queue/claim", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2114,7 +2121,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (!res.ok || !data.id || !data.ticketNumber) {
-          setAuthError(data.error ?? "No one is waiting in this queue.")
+          // Prefer JSON error; fall back when Cloudflare returns HTML 502.
+          const message =
+            formatApiErrorMessage(data, "") ||
+            (res.status >= 500
+              ? "Server timed out while calling the next person. Tap Call again — if they are already serving, you will open the serving screen."
+              : "No one is waiting in this queue.")
+          setAuthError(message)
+          await refreshStaffQueue()
           return
         }
 
@@ -2142,6 +2156,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         navigateTo("staff-serving")
       } catch {
         setAuthError("Could not reach the server to call the next person.")
+        await refreshStaffQueue()
       }
     })()
   }, [currentUser, locations, refreshStaffQueue, navigateTo])

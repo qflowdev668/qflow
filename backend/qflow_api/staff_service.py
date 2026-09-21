@@ -331,7 +331,10 @@ async def claim_entry(staff: StaffContext, entry_id: str | None = None) -> dict[
                     },
                     prefer="return=minimal",
                 )
-            except httpx.HTTPStatusError:
+            except Exception:
+                # Claim already wrote status=serving. Never fail the HTTP response
+                # after that — timeouts left the ticket stuck while the UI stayed
+                # on the waiting list.
                 pass
 
     name = await resolve_customer_name(entry)

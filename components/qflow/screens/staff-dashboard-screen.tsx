@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useApp, type PriorityType, type StaffQueueItem } from "@/lib/app-context"
 import { StatsCard } from "@/components/qflow/stats-card"
 import { AddWalkInModal } from "@/components/qflow/add-walk-in-modal"
@@ -30,6 +30,12 @@ export function StaffDashboardScreen() {
     lastSyncedAt,
     refreshLocations,
     refreshStaffQueue,
+    staffQueueSyncError,
+    staffQueueSyncStatus,
+    currentlyServing,
+    navigateTo,
+    authError,
+    clearAuthError,
   } = useApp()
   const t = useT()
   const isOffline = useOfflineStatus()
@@ -67,8 +73,16 @@ export function StaffDashboardScreen() {
   const isHighLoad =
     !!staffLocation && staffLocation.queueCount / staffLocation.capacity >= 0.8
 
-  // System status - Part C
-  const systemSyncStatus = (isOffline ? "offline" : "live") as "live" | "syncing" | "offline"
+  // System status - Part C (pipe status beats offline guess when online)
+  const systemSyncStatus = (
+    isOffline
+      ? "offline"
+      : staffQueueSyncStatus === "syncing"
+        ? "syncing"
+        : staffQueueSyncStatus === "error"
+          ? "offline"
+          : "live"
+  ) as "live" | "syncing" | "offline"
 
   const handleEndShift = () => {
     setShowEndShiftModal(false)
@@ -201,11 +215,64 @@ export function StaffDashboardScreen() {
   }
 
   const handleServe = (item: StaffQueueItem) => {
+    clearAuthError()
     serveWalkIn(item)
   }
 
+  // If a claim already put someone into "serving" but the HTTP response was
+  // lost (timeout), resume the serving screen on the next successful sync.
+  useEffect(() => {
+    if (currentlyServing?.id) {
+      navigateTo("staff-serving")
+    }
+  }, [currentlyServing?.id, navigateTo])
+
   return (
     <div className="min-h-screen bg-background">
+      {authError ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Could not call customer</p>
+            <p className="text-amber-900/90">{authError}</p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-amber-300 bg-white"
+            onClick={() => clearAuthError()}
+          >
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+      {staffQueueSyncError ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Queue sync issue</p>
+            <p className="text-red-700/90">{staffQueueSyncError}</p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-red-300 bg-white"
+            onClick={() => void handleRetryConnection()}
+            disabled={isRetrying}
+          >
+            <RefreshCw className={cn("mr-1 h-3.5 w-3.5", isRetrying && "animate-spin")} />
+            Retry
+          </Button>
+        </div>
+      ) : null}
       {/* Header - Changes to amber when on break (Part B) */}
       <header className={cn(
         "px-4 pt-6 pb-8 transition-colors",
