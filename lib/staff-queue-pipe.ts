@@ -5,7 +5,7 @@
  * even when postgres_changes is delayed, filtered out by RLS, or disconnected.
  */
 
-export const STAFF_QUEUE_POLL_MS = 3000
+export const STAFF_QUEUE_POLL_MS = 8000
 export const STAFF_QUEUE_REALTIME_DEBOUNCE_MS = 250
 
 export type StaffQueueSyncStatus = "idle" | "syncing" | "live" | "error"

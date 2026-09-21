@@ -399,6 +399,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const adminOtpConfirmed = useRef(false)
   const emailOtpVerifyInFlight = useRef(false)
   const privilegedLoginInProgress = useRef(false)
+  const staffQueueInFlight = useRef(false)
   const currentUserRef = useRef<User | null>(null)
   const pathnameRef = useRef(pathname)
 
@@ -674,7 +675,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false
     }
 
-    setStaffQueueSyncStatus("syncing")
+    // Avoid stacking polls while a prior /api/staff/queue is still in flight
+    // (was ~10s/request with a 3s poll → perpetual "syncing").
+    if (staffQueueInFlight.current) return false
+    staffQueueInFlight.current = true
+
+    setStaffQueueSyncStatus((prev) => (prev === "live" ? "live" : "syncing"))
     try {
       const res = await apiFetch("/api/staff/queue", { cache: "no-store" })
       const raw = await res.json().catch(() => ({}))
@@ -727,6 +733,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStaffQueueSyncStatus("error")
       setStaffQueueSyncError("Could not reach the server for the staff queue.")
       return false
+    } finally {
+      staffQueueInFlight.current = false
     }
   }, [currentUser])
 

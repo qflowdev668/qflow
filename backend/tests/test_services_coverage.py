@@ -299,33 +299,38 @@ async def test_build_queue_entry_item_and_get_staff_queue():
     assert item["hasSpecialNeeds"] is True
 
     staff = StaffContext("s1", "s@x.com", "Staff", "staff", "loc-1")
-    with (
-        patch(
-            "qflow_api.staff_service.rest_get",
-            new_callable=AsyncMock,
-            side_effect=[
-                [
-                    {
-                        "id": "e1",
-                        "position": 1,
-                        "joined_at": joined,
-                        "priority": "standard",
-                        "priority_category": None,
-                        "is_walk_in": True,
-                        "walk_in_name": "W",
-                        "walk_in_notes": None,
-                        "user_id": None,
-                    }
-                ],
-                [{"joined_at": joined, "served_at": joined}],
-                [],
-                [{"id": "e1"}],
-            ],
-        ),
-        patch("qflow_api.staff_service.find_active_serving", new_callable=AsyncMock, return_value=None),
+
+    async def fake_rest_get(_path: str, params: dict[str, str] | None = None):
+        params = params or {}
+        status = params.get("status", "")
+        if "served" in status:
+            return [{"joined_at": joined, "served_at": joined}]
+        if "no-show" in status:
+            return []
+        if "serving" in status:
+            return []
+        return [
+            {
+                "id": "e1",
+                "position": 1,
+                "joined_at": joined,
+                "priority": "standard",
+                "priority_category": None,
+                "is_walk_in": True,
+                "walk_in_name": "W",
+                "walk_in_notes": None,
+                "user_id": None,
+            }
+        ]
+
+    with patch(
+        "qflow_api.staff_service.rest_get",
+        new_callable=AsyncMock,
+        side_effect=fake_rest_get,
     ):
         data = await get_staff_queue(staff)
     assert data["summary"]["customersServed"] == 1
+    assert data["summary"]["queueRemaining"] == 1
     assert len(data["entries"]) == 1
 
 

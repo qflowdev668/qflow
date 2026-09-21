@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
+import asyncio
 
 import httpx
 from fastapi import HTTPException
@@ -121,63 +122,78 @@ async def build_queue_entry_item(entry: dict[str, Any], profile_name: str | None
 
 async def get_staff_queue(staff: StaffContext) -> dict[str, Any]:
     location_id = staff.location_id
-    rows = await rest_get(
-        "queue_entries",
-        {
-            "location_id": f"eq.{location_id}",
-            "status": f"in.({','.join(WAITING_STATUSES)})",
-            "select": "id,position,joined_at,priority,priority_category,is_walk_in,walk_in_name,walk_in_notes,user_id",
-            "order": "position.asc",
-        },
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    waiting_filter = f"in.({','.join(WAITING_STATUSES)})"
+
+    # Parallel REST calls — sequential lookups were ~10s/poll on Render.
+    waiting_rows, served, no_shows, serving = await asyncio.gather(
+        rest_get(
+            "queue_entries",
+            {
+                "location_id": f"eq.{location_id}",
+                "status": waiting_filter,
+                "select": "id,position,joined_at,priority,priority_category,is_walk_in,walk_in_name,walk_in_notes,user_id",
+                "order": "position.asc",
+            },
+        ),
+        rest_get(
+            "queue_entries",
+            {
+                "location_id": f"eq.{location_id}",
+                "status": "eq.served",
+                "served_at": f"gte.{today.isoformat()}",
+                "select": "joined_at,served_at",
+            },
+        ),
+        rest_get(
+            "queue_entries",
+            {
+                "location_id": f"eq.{location_id}",
+                "status": "eq.no-show",
+                "served_at": f"gte.{today.isoformat()}",
+                "select": "id",
+            },
+        ),
+        find_active_serving(location_id),
     )
 
-    # Priority first so a new emergency join is never buried under older standards.
-    rows = sorted(
-        rows,
+    waiting_rows = sorted(
+        waiting_rows,
         key=lambda row: (
             priority_rank(row.get("priority")),
             int(row.get("position") or 0),
         ),
     )
 
-    entries: list[dict[str, Any]] = []
-    for row in rows:
-        profile_name = None
-        if row.get("user_id"):
-            profile = await rest_get_one(
-                "profiles",
-                {"id": f"eq.{row['user_id']}", "select": "name"},
-            )
-            profile_name = (profile or {}).get("name")
-        entries.append(await build_queue_entry_item(row, profile_name))
+    name_ids: list[str] = []
+    for row in waiting_rows:
+        uid = row.get("user_id")
+        if uid and not row.get("is_walk_in"):
+            name_ids.append(uid)
+    if serving and serving.get("user_id") and not serving.get("is_walk_in"):
+        name_ids.append(serving["user_id"])
 
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    served = await rest_get(
-        "queue_entries",
-        {
-            "location_id": f"eq.{location_id}",
-            "status": "eq.served",
-            "served_at": f"gte.{today.isoformat()}",
-            "select": "joined_at,served_at",
-        },
-    )
-    no_shows = await rest_get(
-        "queue_entries",
-        {
-            "location_id": f"eq.{location_id}",
-            "status": "eq.no-show",
-            "served_at": f"gte.{today.isoformat()}",
-            "select": "id",
-        },
-    )
-    waiting_count = await rest_get(
-        "queue_entries",
-        {
-            "location_id": f"eq.{location_id}",
-            "status": f"in.({','.join(WAITING_STATUSES)})",
-            "select": "id",
-        },
-    )
+    names: dict[str, str] = {}
+    if name_ids:
+        unique = list(dict.fromkeys(name_ids))
+        profiles = await rest_get(
+            "profiles",
+            {
+                "id": f"in.({','.join(unique)})",
+                "select": "id,name",
+            },
+        )
+        names = {
+            str(p["id"]): (p.get("name") or "")
+            for p in profiles
+            if p.get("id")
+        }
+
+    entries: list[dict[str, Any]] = []
+    for row in waiting_rows:
+        uid = row.get("user_id")
+        profile_name = names.get(str(uid)) if uid else None
+        entries.append(await build_queue_entry_item(row, profile_name or None))
 
     durations = []
     for row in served:
@@ -186,11 +202,16 @@ async def get_staff_queue(staff: StaffContext) -> dict[str, Any]:
             s = datetime.fromisoformat(row["served_at"].replace("Z", "+00:00"))
             durations.append((s - j).total_seconds() / 60)
 
-    serving = await find_active_serving(location_id)
     currently_serving = None
     if serving:
-        name = await resolve_customer_name(serving)
-        nxt = await load_next_waiting(location_id)
+        uid = serving.get("user_id")
+        if serving.get("is_walk_in"):
+            name = serving.get("walk_in_name") or "Walk-in"
+        elif uid and names.get(str(uid)):
+            name = names[str(uid)]
+        else:
+            name = await resolve_customer_name(serving)
+        nxt = waiting_rows[0] if waiting_rows else None
         currently_serving = build_serving_payload(serving, name, nxt)
 
     return {
@@ -204,7 +225,7 @@ async def get_staff_queue(staff: StaffContext) -> dict[str, Any]:
             "avgServiceTime": (
                 round(sum(durations) / len(durations), 1) if durations else None
             ),
-            "queueRemaining": len(waiting_count),
+            "queueRemaining": len(waiting_rows),
         },
     }
 
