@@ -245,7 +245,7 @@ export function JoinQueueConfirmationScreen() {
                     {t.allowNotifications}
                   </Button>
                   <Button variant="outline" onClick={handleNoThanks} className="rounded-xl">
-                    {t.smsSkip}
+                    {t.skip}
                   </Button>
                 </div>
               </div>

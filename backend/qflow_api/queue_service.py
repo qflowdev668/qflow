@@ -115,9 +115,12 @@ async def join_queue(
     return {
         "ok": True,
         "entryId": entry.get("id"),
+        "locationId": location_id,
         "position": position,
         "waitMinutes": wait_minutes,
         "locationName": location.get("name"),
+        "status": entry.get("status") or "waiting",
+        "priority": priority,
     }
 
 

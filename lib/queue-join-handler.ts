@@ -17,8 +17,8 @@ export type QueueJoinResult = {
 }
 
 /**
- * Optional post-join SMS. Kept as a no-op until AfricasTalking delivery is wired;
- * FastAPI join still returns successfully without blocking on SMS.
+ * Legacy post-join SMS hook — intentionally a no-op (SMS delivery was removed).
+ * Queue join must not block on outbound text messages.
  */
 export async function sendJoinSmsIfOptedIn(
   _userId: string,

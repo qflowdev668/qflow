@@ -14,6 +14,7 @@ class StaffContext:
     name: str | None
     role: str
     location_id: str
+    access_token: str = ""
 
 
 async def require_staff(user: dict[str, Any] = Depends(get_current_user)) -> StaffContext:
@@ -50,4 +51,5 @@ async def require_staff(user: dict[str, Any] = Depends(get_current_user)) -> Sta
         name=profile.get("name"),
         role=role,
         location_id=location_id,
+        access_token=str(user.get("_token") or ""),
     )

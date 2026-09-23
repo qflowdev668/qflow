@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/client"
 import { applySessionExpiresInFromResponse } from "@/lib/session-expiry-signal"
 
-/** Base URL for FastAPI. Empty string = same origin (port 8000). */
+/** Base URL for FastAPI. Empty string = same origin (UI and API share one host). */
 export function getApiBaseUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_API_URL?.trim()
-  if (configured) return configured.replace(/\/$/, "")
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim()
+  if (apiUrl) return apiUrl.replace(/\/$/, "")
   if (typeof window !== "undefined") return ""
-  return process.env.NEXT_PUBLIC_API_URL?.trim()?.replace(/\/$/, "") || "http://127.0.0.1:8000"
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (appUrl) return appUrl.replace(/\/$/, "")
+  return ""
 }
 
 export async function getAccessToken(): Promise<string | null> {

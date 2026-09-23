@@ -183,7 +183,7 @@ ${sql}
 // Reload schema: wait briefly then upsert
 await new Promise((r) => setTimeout(r, 1500))
 
-const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")
+const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://useqflow.app").replace(/\/$/, "")
 const secret = process.env.PUSH_DISPATCH_SECRET || "qflow-push-dispatch-change-me"
 
 for (const row of [

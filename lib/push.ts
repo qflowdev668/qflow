@@ -1,3 +1,9 @@
+"""Web Push delivery for queue lifecycle alerts.
+
+Canonical sender is FastAPI ``POST /api/push/dispatch`` (see ``qflow_api.push_service``).
+This Node helper remains for local scripts / tests that cannot call the API.
+"""
+
 import webpush from "web-push"
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"

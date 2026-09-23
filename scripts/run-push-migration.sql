@@ -89,9 +89,9 @@ create trigger notifications_dispatch_web_push
   for each row
   execute function public.dispatch_web_push_for_notification();
 
--- ========== webhook config (localhost for now; change for production) ==========
+-- ========== webhook config (set NEXT_PUBLIC_APP_URL before running; production: https://useqflow.app) ==========
 
 insert into public.app_settings (key, value) values
-  ('push_dispatch_url', 'http://localhost:3000/api/push/dispatch'),
+  ('push_dispatch_url', 'https://useqflow.app/api/push/dispatch'),
   ('push_dispatch_secret', 'qflow-push-dispatch-change-me')
 on conflict (key) do update set value = excluded.value;

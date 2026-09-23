@@ -64,11 +64,14 @@ export type ClaimStaffEntryResult =
   | { ok: true; entry: QueueEntry }
   | { ok: false; error: string; status: number; serving?: QueueEntry }
 
-/** Claim the next waiting ticket or a specific entry (service-role safe). */
+/**
+ * Claim via DB RPCs (`claim_next_queue_entry` / `claim_queue_entry`) so auth.uid()
+ * and the serving lock stay atomic. Prefer FastAPI `/api/staff/queue/claim` in the app.
+ */
 export async function claimStaffEntry(
   db: SupabaseClient<Database>,
   locationId: string,
-  staffUserId: string,
+  _staffUserId: string,
   entryId?: string
 ): Promise<ClaimStaffEntryResult> {
   const serving = await findActiveServing(db, locationId)
@@ -87,70 +90,38 @@ export async function claimStaffEntry(
     }
   }
 
-  let target: QueueEntry | null = null
+  const rpc = entryId
+    ? db.rpc("claim_queue_entry", { p_entry_id: entryId })
+    : db.rpc("claim_next_queue_entry", { p_location_id: locationId })
 
-  if (entryId) {
-    const { data } = await db
-      .from("queue_entries")
-      .select("*")
-      .eq("id", entryId)
-      .eq("location_id", locationId)
-      .in("status", [...WAITING_STATUSES])
-      .maybeSingle()
-    target = data
-    if (!target) {
+  const { data: claimed, error } = await rpc.maybeSingle()
+
+  if (error) {
+    const message = error.message || "Could not claim the queue entry."
+    if (/already being served/i.test(message)) {
+      const current = await findActiveServing(db, locationId)
       return {
         ok: false,
         error:
-          "That queue entry is no longer waiting (it may already be locked or served).",
-        status: 404,
+          "Someone is already being served. Tap Complete Service on the serving screen, or finish the current ticket first.",
+        status: 409,
+        serving: current ?? undefined,
       }
     }
-  } else {
-    const { data } = await db
-      .from("queue_entries")
-      .select("*")
-      .eq("location_id", locationId)
-      .in("status", [...WAITING_STATUSES])
-      .order("position")
-      .limit(1)
-      .maybeSingle()
-    target = data
-    if (!target) {
-      return {
-        ok: false,
-        error: "No one is waiting in this queue.",
-        status: 404,
-      }
-    }
-  }
-
-  const { data: claimed, error } = await db
-    .from("queue_entries")
-    .update({
-      status: "serving",
-      serving_by: staffUserId,
-      serving_started_at: new Date().toISOString(),
-    })
-    .eq("id", target.id)
-    .eq("location_id", locationId)
-    .in("status", [...WAITING_STATUSES])
-    .select("*")
-    .maybeSingle()
-
-  if (error) {
-    return { ok: false, error: error.message, status: 502 }
+    return { ok: false, error: message, status: 502 }
   }
 
   if (!claimed) {
     return {
       ok: false,
-      error: "Could not claim the queue entry. Refresh and try again.",
-      status: 409,
+      error: entryId
+        ? "That queue entry is no longer waiting (it may already be locked or served)."
+        : "No one is waiting in this queue.",
+      status: 404,
     }
   }
 
-  return { ok: true, entry: claimed }
+  return { ok: true, entry: claimed as QueueEntry }
 }
 
 export function buildServingPayload(

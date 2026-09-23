@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from qflow_api.config import settings
+from qflow_api.push_service import push_dispatch_ready, vapid_configured
 
 router = APIRouter(tags=["status"])
 
@@ -77,12 +78,39 @@ async def public_status() -> JSONResponse:
 
     vapid_public = bool(os.environ.get("NEXT_PUBLIC_VAPID_PUBLIC_KEY", "").strip())
     vapid_private = bool(os.environ.get("VAPID_PRIVATE_KEY", "").strip())
-    if vapid_public and vapid_private:
-        components.append({"name": "Push Notifications", "status": "operational", "detail": "VAPID keys configured"})
+    secret_set = bool(os.environ.get("PUSH_DISPATCH_SECRET", "").strip())
+    if push_dispatch_ready():
+        components.append(
+            {
+                "name": "Push Notifications",
+                "status": "operational",
+                "detail": "VAPID keys and PUSH_DISPATCH_SECRET configured",
+            }
+        )
+    elif vapid_configured() and not secret_set:
+        components.append(
+            {
+                "name": "Push Notifications",
+                "status": "degraded",
+                "detail": "VAPID ok; PUSH_DISPATCH_SECRET missing (webhooks cannot authorize)",
+            }
+        )
     elif vapid_public or vapid_private:
-        components.append({"name": "Push Notifications", "status": "degraded", "detail": "Incomplete VAPID configuration"})
+        components.append(
+            {
+                "name": "Push Notifications",
+                "status": "degraded",
+                "detail": "Incomplete VAPID configuration",
+            }
+        )
     else:
-        components.append({"name": "Push Notifications", "status": "down", "detail": "VAPID keys not set"})
+        components.append(
+            {
+                "name": "Push Notifications",
+                "status": "down",
+                "detail": "VAPID keys not set — /api/push/dispatch cannot send",
+            }
+        )
 
     has_down = any(c["status"] == "down" for c in components)
     has_degraded = any(c["status"] == "degraded" for c in components)

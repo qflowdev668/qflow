@@ -336,7 +336,7 @@ async def test_build_queue_entry_item_and_get_staff_queue():
 
 @pytest.mark.asyncio
 async def test_add_walk_in_claim_finish():
-    staff = StaffContext("s1", "s@x.com", "Staff", "staff", "loc-1")
+    staff = StaffContext("s1", "s@x.com", "Staff", "staff", "loc-1", access_token="tok")
     joined = datetime.now(timezone.utc).isoformat()
 
     with (
@@ -363,10 +363,7 @@ async def test_add_walk_in_claim_finish():
     }
     with (
         patch("qflow_api.staff_service.find_active_serving", new_callable=AsyncMock, return_value=None),
-        patch("qflow_api.staff_service.rest_get", new_callable=AsyncMock, return_value=[entry]),
-        patch("qflow_api.staff_service.rest_patch", new_callable=AsyncMock, return_value=entry),
-        patch("qflow_api.staff_service.rest_get_one", new_callable=AsyncMock, return_value={"name": "Clinic"}),
-        patch("qflow_api.staff_service.rest_insert", new_callable=AsyncMock, return_value={}),
+        patch("qflow_api.staff_service.rest_rpc", new_callable=AsyncMock, return_value=entry),
         patch("qflow_api.staff_service.resolve_customer_name", new_callable=AsyncMock, return_value="Pat"),
         patch("qflow_api.staff_service.load_next_waiting", new_callable=AsyncMock, return_value=None),
     ):

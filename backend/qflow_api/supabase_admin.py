@@ -118,3 +118,41 @@ async def rest_patch(
     if isinstance(rows, list) and rows:
         return rows[0]
     return None
+
+
+async def rest_rpc(
+    fn: str,
+    body: dict[str, Any],
+    *,
+    access_token: str,
+    prefer: str = "return=representation",
+) -> Any:
+    """Call a PostgREST RPC as the signed-in user (auth.uid() / RLS / claim_*)."""
+    key = (settings.supabase_anon_key or "").strip()
+    if not key or not settings.supabase_url.strip():
+        raise HTTPException(status_code=501, detail="Supabase is not configured.")
+    if not access_token.strip():
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Prefer": prefer,
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(
+            f"{settings.supabase_rest_url}/rpc/{fn.lstrip('/')}",
+            headers=headers,
+            json=body,
+        )
+    if response.status_code not in (200, 204):
+        raise httpx.HTTPStatusError(
+            response.text or f"RPC {fn} failed",
+            request=response.request,
+            response=response,
+        )
+    if not response.content:
+        return None
+    return response.json()

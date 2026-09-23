@@ -116,7 +116,7 @@ async function upsertAppSettings() {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.VERCEL_URL?.replace(/^/, "https://") ||
-    "http://localhost:3000"
+    "https://useqflow.app"
   const secret = process.env.PUSH_DISPATCH_SECRET || "qflow-push-dispatch-change-me"
 
   const rows = [

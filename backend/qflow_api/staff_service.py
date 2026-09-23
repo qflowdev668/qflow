@@ -6,7 +6,7 @@ import httpx
 from fastapi import HTTPException
 
 from qflow_api.staff_auth import StaffContext
-from qflow_api.supabase_admin import rest_get, rest_get_one, rest_insert, rest_patch
+from qflow_api.supabase_admin import rest_get, rest_get_one, rest_insert, rest_patch, rest_rpc
 
 WAITING_STATUSES = ("waiting", "almost", "your-turn")
 
@@ -270,93 +270,79 @@ async def add_walk_in(
     return {"id": entry["id"], "position": entry["position"]}
 
 
+async def _claim_conflict_payload(location_id: str, serving: dict[str, Any]) -> dict[str, Any]:
+    name = await resolve_customer_name(serving)
+    nxt = await load_next_waiting(location_id)
+    return {
+        "_status": 409,
+        "error": "Someone is already being served. Complete or skip them first.",
+        "currentlyServing": build_serving_payload(serving, name, nxt),
+    }
+
+
 async def claim_entry(staff: StaffContext, entry_id: str | None = None) -> dict[str, Any]:
+    """Atomic claim via DB RPCs (auth.uid()). Turn notify comes from notify_queue_lifecycle only."""
     location_id = staff.location_id
     serving = await find_active_serving(location_id)
 
     if entry_id and serving and serving.get("id") == entry_id:
         entry = serving
     elif serving:
-        name = await resolve_customer_name(serving)
-        nxt = await load_next_waiting(location_id)
-        return {
-            "_status": 409,
-            "error": "Someone is already being served. Complete or skip them first.",
-            "currentlyServing": build_serving_payload(serving, name, nxt),
-        }
+        return await _claim_conflict_payload(location_id, serving)
     else:
-        if entry_id:
-            entry = await rest_get_one(
-                "queue_entries",
-                {
-                    "id": f"eq.{entry_id}",
-                    "location_id": f"eq.{location_id}",
-                    "status": f"in.({','.join(WAITING_STATUSES)})",
-                    "select": "*",
-                },
-            )
-            if not entry:
+        if not staff.access_token:
+            raise HTTPException(status_code=401, detail="Sign in required.")
+
+        try:
+            if entry_id:
+                claimed = await rest_rpc(
+                    "claim_queue_entry",
+                    {"p_entry_id": entry_id},
+                    access_token=staff.access_token,
+                )
+            else:
+                claimed = await rest_rpc(
+                    "claim_next_queue_entry",
+                    {"p_location_id": location_id},
+                    access_token=staff.access_token,
+                )
+        except httpx.HTTPStatusError as exc:
+            text = (exc.response.text if exc.response is not None else "") or ""
+            lowered = text.lower()
+            if "already being served" in lowered:
+                current = await find_active_serving(location_id)
+                if current:
+                    return await _claim_conflict_payload(location_id, current)
+                raise HTTPException(
+                    status_code=409,
+                    detail="Someone is already being served. Complete or skip them first.",
+                )
+            if "no longer waiting" in lowered or "not waiting" in lowered:
                 raise HTTPException(
                     status_code=404,
                     detail="That queue entry is no longer waiting.",
-                )
-        else:
-            rows = await rest_get(
-                "queue_entries",
-                {
-                    "location_id": f"eq.{location_id}",
-                    "status": f"in.({','.join(WAITING_STATUSES)})",
-                    "select": "*",
-                    "order": "position.asc",
-                },
-            )
-            if not rows:
-                raise HTTPException(status_code=404, detail="No one is waiting in this queue.")
-            rows = sorted(
-                rows,
-                key=lambda row: (
-                    priority_rank(row.get("priority")),
-                    int(row.get("position") or 0),
+                ) from exc
+            status = exc.response.status_code if exc.response is not None else 502
+            if status in (401, 403):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Could not claim the queue with this staff session.",
+                ) from exc
+            raise HTTPException(
+                status_code=502,
+                detail="Could not claim the queue entry. Try again.",
+            ) from exc
+
+        if not claimed or not isinstance(claimed, dict) or not claimed.get("id"):
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "That queue entry is no longer waiting."
+                    if entry_id
+                    else "No one is waiting in this queue."
                 ),
             )
-            entry = rows[0]
-
-        now = datetime.now(timezone.utc).isoformat()
-        claimed = await rest_patch(
-            "queue_entries",
-            {
-                "id": f"eq.{entry['id']}",
-                "location_id": f"eq.{location_id}",
-                "status": f"in.({','.join(WAITING_STATUSES)})",
-            },
-            {
-                "status": "serving",
-                "serving_by": staff.user_id,
-                "serving_started_at": now,
-            },
-        )
-        if not claimed:
-            raise HTTPException(status_code=409, detail="Could not claim the queue entry.")
         entry = claimed
-        user_id = entry.get("user_id")
-        if user_id:
-            loc = await rest_get_one("locations", {"id": f"eq.{location_id}", "select": "name"})
-            loc_name = (loc or {}).get("name") or "the location"
-            try:
-                await rest_insert(
-                    "notifications",
-                    {
-                        "user_id": user_id,
-                        "message": f"It is your turn at {loc_name}. Please head to the counter.",
-                        "icon": "turn",
-                    },
-                    prefer="return=minimal",
-                )
-            except Exception:
-                # Claim already wrote status=serving. Never fail the HTTP response
-                # after that — timeouts left the ticket stuck while the UI stayed
-                # on the waiting list.
-                pass
 
     name = await resolve_customer_name(entry)
     nxt = await load_next_waiting(location_id)
