@@ -14,7 +14,7 @@ QFlow is a Progressive Web App for South African clinics, banks, and government 
 | **Repository** | [github.com/qflowdev668/qflow](https://github.com/qflowdev668/qflow) |
 | **Live status** | [useqflow.app/status](https://useqflow.app/status) · [API](https://useqflow.app/api/status) |
 | **Counter display** | `/display/_/?id=<locationId>` (public kiosk / TV) |
-| **Stack** | FastAPI · Next.js 16 — build tool only, static export, no SSR/API routes · React 19 · TypeScript · Tailwind · Supabase · Resend · Web Push · Upstash |
+| **Stack** | FastAPI · Next.js 16 — build tool only, static export, no SSR/API routes · React 19 · TypeScript · Tailwind · Supabase · Mapbox · Resend · Web Push · Upstash |
 | **Package** | `qflow` (`package.json`) |
 | **Production** | [https://useqflow.app](https://useqflow.app) |
 | **Local** | `http://127.0.0.1:8000` |
@@ -99,13 +99,15 @@ Internal runbook: [STAFF_ONBOARDING.md](./STAFF_ONBOARDING.md).
 
 ### Customers
 - **Customer UI** — high-contrast white surfaces, QFlow blue/amber tokens (`app/globals.css`), illustration-led layouts, SVG queue scenes (`components/qflow/illustrations/`)
-- In-app notifications + optional **Web Push** (no SMS)
+- In-app notifications + optional **Web Push** (no SMS); **Alert Settings** persist preferences (`profiles.notification_preferences` + local cache) and opt out of push categories
+- **You're next** urgency — when position is **#1** and still waiting, `/queue` (normal + **Show big text**) and the Flow Bar use a distinct “about to be called” state (`lib/queue-next-state.ts`), separate from **your turn / serving**
 - Visit ratings after service — only if most recent entry is **`served` within 2 hours** and not already rated
-- Help centre (FAQ, `support@qflow.co.za`, system status, clear local data, accessibility)
+- **Help** (`/help`) — FAQ, contact (`support@qflow.co.za`), system status, clear local data
+- **Edit profile** (`/profile/edit`) — display name + **profile photo** upload/remove via FastAPI → Supabase Storage `avatars` bucket (`UserAvatar` shared on Profile / Edit)
 - **POPIA**: download my data + delete account (anonymises queue tickets for stats)
 - Languages: English, Afrikaans, Zulu, Sesotho, Xhosa, Setswana
-- Accessibility settings (including **Show big text** on My line), session expiry banner (FastAPI `X-Session-Expires-In` + client countdown), offline / outage banners
-- **Map** (`/map`) — Mapbox GL with capacity-colored pins (reuses `getMapPinCapacityInfo`); tap opens the same Join queue drawer as Home
+- **Accessibility** prefs (high contrast, reduce motion, **Show big text** on My line) apply live via DOM/CSS; session expiry banner (FastAPI `X-Session-Expires-In` + client countdown); offline / outage banners
+- **Map** (`/map`) — Mapbox GL with capacity-colored pins, location search, geolocation, and **persistent directions** (route polyline + ETA summary) tied to queue lifecycle (`lib/active-route-store.ts`); tap a pin opens the same Join queue drawer as Home
 
 ### Platform
 - Static export with placeholder dynamic routes (`/location/_/?id=…`, `/display/_/?id=…`); FastAPI rewrites legacy `/location/{uuid}` URLs
@@ -168,7 +170,7 @@ Copy from `.env.local.example`. Never commit `.env.local`.
 | `VAPID_PRIVATE_KEY` | Push | Web Push private key (FastAPI `pywebpush` sender) |
 | `VAPID_SUBJECT` | Push | `mailto:` contact for VAPID |
 | `PUSH_DISPATCH_SECRET` | Push webhook | Bearer for DB/Edge → `/api/push/dispatch` (staff JWT also allowed) |
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | Map | Mapbox public access token for the `/map` view (free tier, no billing card required) |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Map | Mapbox **public** token (`pk.…`) for `/map` + directions (free tier OK). Baked at **`npm run build:web`** — set locally in `.env.local` and on **Render → Environment**, then redeploy |
 | `NEXT_PUBLIC_APP_URL` | Production | Canonical app URL (`https://useqflow.app`) |
 | `ALLOWED_ORIGINS` | Production | Comma-separated CORS origins for FastAPI (e.g. `https://useqflow.app`) |
 | `NEXT_PUBLIC_API_URL` | Optional | Leave empty when UI and API share one host |
@@ -181,6 +183,7 @@ Notes:
 - Without Upstash, OTP limits fall back to an in-memory Map (fine for local single-process use).
 - Generate VAPID keys: `npm run pwa:vapid`
 - Web Push is **operational** on `/api/status` only when **both** VAPID keys and `PUSH_DISPATCH_SECRET` are set on the FastAPI host. VAPID alone marks Push as **degraded** (staff JWT can still send; DB/Edge webhooks cannot authorize).
+- Without `NEXT_PUBLIC_MAPBOX_TOKEN` at build time, `/map` shows “Map is unavailable…” (token is public — still do not commit `.env.local`).
 
 ### GitHub Actions CI
 
@@ -226,6 +229,8 @@ npm run db:push
 | `…_profile_sms` | `cell_number` (retained for admin contact; SMS channel removed) |
 | `…_anonymize_queue_entries` | Allow `user_id` null after account deletion (stats retention) |
 | `…_admin_accounts` | Multi-admin cellphone OTP (`admin_accounts`; env remains bootstrap) |
+| `…_notification_preferences` | `profiles.notification_preferences` JSONB for Alert Settings |
+| `…_avatars_storage` | Public `avatars` Storage bucket + RLS policies for profile photos |
 
 After production deploy, optionally configure DB → HTTP push (needs **`pg_net`**):
 
@@ -313,6 +318,8 @@ All routes are served by **FastAPI** on the same origin as the UI (port 8000 loc
 | `GET` | `/api/auth/reset/session` | — | Resolve `?rt=` reset token |
 | `POST` | `/api/rate` | User session | Submit visit rating (served within 2h, once per entry) |
 | `GET` | `/api/user/export-data` | User session | POPIA JSON data export download |
+| `POST` | `/api/user/avatar` | User session + multipart `file` | Upload profile photo (service-role Storage write → `avatars/{userId}.jpg`) |
+| `DELETE` | `/api/user/avatar` | User session | Remove profile photo + clear `profiles.avatar_url` |
 | `DELETE` | `/api/user/delete-account` | User session + `{ confirm: "DELETE" }` | Erase account; anonymise queue rows |
 | `POST` | `/api/errors` | Public | React `ErrorBoundary` → insert into `client_errors` (message, stack, path, `created_at`) |
 | `GET` | `/auth/callback` | OAuth / magic link | Client page for session exchange |
@@ -446,9 +453,11 @@ Three related surfaces — do not treat them as interchangeable:
 | Channel | When |
 |---------|------|
 | In-app | Queue lifecycle DB trigger `notify_queue_lifecycle` → `notifications` (join, almost, your-turn/serving, served, no-show). Staff claim does **not** insert a second turn row. |
-| Web Push | FastAPI `POST /api/push/dispatch` (`pywebpush`) — staff/admin session from the app (`lib/push-client.ts`), and/or `PUSH_DISPATCH_SECRET` from `pg_net` / Edge Function |
+| Web Push | FastAPI `POST /api/push/dispatch` (`pywebpush`) — staff/admin session from the app (`lib/push-client.ts`), and/or `PUSH_DISPATCH_SECRET` from `pg_net` / Edge Function. Dispatch respects per-user **Alert Settings** (`profiles.notification_preferences` + `lib/notification-prefs.ts` / Edge Function). |
 
 SMS is **not** used. UI copy refers to phone / in-app alerts only. Customers get alerts in the app and (when permitted) as OS push banners.
+
+**Alert Settings** (`/profile/notifications`) — toggle categories (e.g. almost-next / your-turn), save to profile + localStorage, and sync Web Push subscribe/unsubscribe via `lib/web-push.ts`.
 
 Multilingual alert copy (`almost_next`, `your_turn`, `no_show`, `rate_visit`) lives in `lib/notification-templates.ts` (en, af, zu, st, xh, tn). The client localizes stored English bodies on the notifications screen; staff/Edge push still sends English.
 
@@ -593,16 +602,18 @@ app/                      # App Router pages (static export; no Next API routes)
 backend/                  # FastAPI app server (API + static out/)
   main.py                 # Health, SPA serve, /location|display redirects
   qflow_api/              # Routers: queue, staff, admin, auth, user, display, status, misc (push)
+    storage_admin.py      # Service-role avatar upload/delete (Supabase Storage)
     push_service.py       # Web Push send (pywebpush) + dispatch auth
   tests/                  # pytest (incl. test_push_service.py)
 out/                      # Built static UI (gitignored locally; produced by build:web)
-components/qflow/         # Screens, shell, join-queue-drawer, banners, PWA
+components/qflow/         # Screens, shell, join-queue-drawer, map (QflowMap), UserAvatar, banners, PWA
 components/qflow/error-boundary.tsx  # Catches render errors → POST /api/errors → client_errors
 components/qflow/illustrations/
 components/ui/            # shadcn (drawer, button, …)
-lib/                      # Context, routes, i18n, Supabase, push-client, api-client, rate-limit
+hooks/                    # e.g. use-chrome-insets (Flow Bar / bottom nav safe area)
+lib/                      # Context, routes, i18n, Supabase, mapbox-directions, avatar-upload, prefs, push-client, api-client
 __tests__/                # Jest
-e2e/                      # Playwright
+e2e/                      # Playwright (incl. map / directions)
 __mocks__/msw/
 jest.config.ts
 playwright.config.ts
