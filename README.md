@@ -88,7 +88,7 @@ Internal runbook: [STAFF_ONBOARDING.md](./STAFF_ONBOARDING.md).
 - **Join bottom sheet** — tap a location on Home/Map; a drawer slides up with wait time, optional priority, and **Join the line** (2 taps for standard join; 3 with priority)
 - Join / leave with **emergency** and **fast-track** priority
 - One active entry per user per location (partial unique index)
-- Atomic **serving** claim (`FOR UPDATE SKIP LOCKED`) — one person served per location at a time
+- Atomic **serving** claim via Postgres RPCs (`claim_next_queue_entry` / `claim_queue_entry`, `FOR UPDATE SKIP LOCKED`) — one person served per location at a time
 - Walk-ins stored in the same `queue_entries` table as app users
 - Ticket numbers from `position` (zero-padded, e.g. `047`)
 
@@ -163,10 +163,10 @@ Copy from `.env.local.example`. Never commit `.env.local`.
 | `RESEND_FROM_EMAIL` | Recommended | e.g. `QFlow <onboarding@resend.dev>` |
 | `ADMIN_OTP_PHONE` | Yes (admin) | Bootstrap super-admin cellphone (never removable) |
 | `ADMIN_OTP_EMAIL` | Yes (admin) | Bootstrap super-admin OTP inbox |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Push | Web Push public key |
-| `VAPID_PRIVATE_KEY` | Push | Web Push private key |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Push | Web Push public key (also required on the FastAPI host) |
+| `VAPID_PRIVATE_KEY` | Push | Web Push private key (FastAPI `pywebpush` sender) |
 | `VAPID_SUBJECT` | Push | `mailto:` contact for VAPID |
-| `PUSH_DISPATCH_SECRET` | Push webhook | Bearer for `/api/push/dispatch` |
+| `PUSH_DISPATCH_SECRET` | Push webhook | Bearer for DB/Edge → `/api/push/dispatch` (staff JWT also allowed) |
 | `NEXT_PUBLIC_APP_URL` | Production | Canonical app URL (`https://useqflow.app`) |
 | `ALLOWED_ORIGINS` | Production | Comma-separated CORS origins for FastAPI (e.g. `https://useqflow.app`) |
 | `NEXT_PUBLIC_API_URL` | Optional | Leave empty when UI and API share one host |
@@ -178,6 +178,7 @@ Notes:
 - Resend’s free `onboarding@resend.dev` sender only delivers to your Resend account email until you verify a domain.
 - Without Upstash, OTP limits fall back to an in-memory Map (fine for local single-process use).
 - Generate VAPID keys: `npm run pwa:vapid`
+- Web Push is **operational** on `/api/status` only when **both** VAPID keys and `PUSH_DISPATCH_SECRET` are set on the FastAPI host. VAPID alone marks Push as **degraded** (staff JWT can still send; DB/Edge webhooks cannot authorize).
 
 ### GitHub Actions CI
 
@@ -246,7 +247,7 @@ npm run check:supabase
 npm run functions:deploy
 ```
 
-Then use Database Webhooks or cron polling against `…/functions/v1/push-dispatch` (see `supabase/functions/push-dispatch/`). Staff “call next” still creates in-app notifications and can dispatch Web Push from the app.
+Then use Database Webhooks or cron polling against `…/functions/v1/push-dispatch` (see `supabase/functions/push-dispatch/`). Staff “call next” still creates **in-app** notifications via the `notify_queue_lifecycle` DB trigger; the app (and optional webhooks) can also hit FastAPI `/api/push/dispatch` for OS push.
 
 Mirror password rules in **Supabase Auth → Password policy** (12+ characters, mixed case, digit, symbol).
 
@@ -297,9 +298,9 @@ All routes are served by **FastAPI** on the same origin as the UI (port 8000 loc
 | `POST` | `/api/queue/leave` | User Bearer JWT | Leave queue |
 | `GET` | `/api/queue/health` | Public | Queue service health |
 | `POST` | `/api/push/subscribe` | User session | Store Web Push subscription |
-| `POST` | `/api/push/dispatch` | Staff/admin or secret | Send Web Push to a user |
+| `POST` | `/api/push/dispatch` | Staff/admin JWT **or** `Bearer ${PUSH_DISPATCH_SECRET}` | Send Web Push via FastAPI `pywebpush` (`qflow_api/push_service.py`) |
 | `POST` | `/api/staff/login` | — | Staff password verify + email OTP (rate limited) |
-| `POST` | `/api/staff/queue/claim` | Staff | Call / claim next or specific entry |
+| `POST` | `/api/staff/queue/claim` | Staff | Call / claim next or specific entry (`claim_*` RPCs as the staff JWT; no duplicate turn notify insert) |
 | `POST` | `/api/staff/walk-in` | Staff | Add walk-in |
 | `POST` | `/api/admin/otp/send` | — | Admin cellphone OTP (rate limited) |
 | `POST` | `/api/admin/otp/verify` | — | Verify admin OTP |
@@ -328,7 +329,7 @@ Next.js no longer runs Edge `proxy.ts` / middleware (static export). Session ref
 |-------|------|---------|---------|
 | Authenticated user | `backend/qflow_api/auth.py` → `get_current_user` | `Depends(get_current_user)` — Bearer JWT required | `/api/queue/*`, `/api/user/*`, `/api/rate`, push subscribe |
 | Admin only | `backend/qflow_api/admin_auth.py` → `require_admin_dep` | JWT + `profiles.role == "admin"` | `/api/admin/*` |
-| Staff (or admin) | `backend/qflow_api/staff_auth.py` → `require_staff` | JWT + `profiles.role in ("staff","admin")` + `location_id` | `/api/staff/*` |
+| Staff (or admin) | `backend/qflow_api/staff_auth.py` → `require_staff` | JWT + `profiles.role in ("staff","admin")` + `location_id` + access token for claim RPCs | `/api/staff/*` |
 
 There is no shared `dependencies.py`; routers import these deps directly.
 
@@ -428,18 +429,28 @@ Three related surfaces — do not treat them as interchangeable:
 | `/api/status` | App + DB + Auth + Push component status (JSON) | Programmatic monitoring, dashboards |
 | `/status` | Human-readable page rendering `/api/status` data | UptimeRobot browser check, public status page link |
 
+**Push component** on `/api/status`:
+
+| Status | Meaning |
+|--------|---------|
+| `operational` | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `PUSH_DISPATCH_SECRET` all set |
+| `degraded` | Incomplete VAPID, or VAPID set but secret missing (staff JWT can still dispatch; webhooks cannot) |
+| `down` | VAPID keys not set — `/api/push/dispatch` cannot send |
+
 ---
 
 ## Notifications
 
 | Channel | When |
 |---------|------|
-| In-app | Queue lifecycle DB triggers → `notifications`; staff claim also inserts a turn alert |
-| Web Push | Staff actions + optional `pg_net` / Edge Function → `/api/push/dispatch` |
+| In-app | Queue lifecycle DB trigger `notify_queue_lifecycle` → `notifications` (join, almost, your-turn/serving, served, no-show). Staff claim does **not** insert a second turn row. |
+| Web Push | FastAPI `POST /api/push/dispatch` (`pywebpush`) — staff/admin session from the app (`lib/push-client.ts`), and/or `PUSH_DISPATCH_SECRET` from `pg_net` / Edge Function |
 
-SMS is **not** used. Customers get alerts in the app and (when permitted) as OS push banners.
+SMS is **not** used. UI copy refers to phone / in-app alerts only. Customers get alerts in the app and (when permitted) as OS push banners.
 
 Multilingual alert copy (`almost_next`, `your_turn`, `no_show`, `rate_visit`) lives in `lib/notification-templates.ts` (en, af, zu, st, xh, tn). The client localizes stored English bodies on the notifications screen; staff/Edge push still sends English.
+
+Canonical Node helper `lib/push.ts` remains for local scripts; production delivery is FastAPI.
 
 ### Known gaps
 
@@ -509,7 +520,7 @@ Before E2E: `npm run build:web` and `npm run dev` (or let Playwright start the s
 | `__tests__/integration/` | Staff + admin flows, queue messaging |
 | `__tests__/accessibility/` | jest-axe + keyboard |
 | `__tests__/helpers/` | Shared `useApp` mocks |
-| `backend/tests/` | FastAPI health, auth/session gates, display privacy, service coverage (≥70% `qflow_api`) |
+| `backend/tests/` | FastAPI health, auth/session gates, push dispatch, display privacy, service coverage (≥70% `qflow_api`) |
 | `e2e/` | Splash, login, display, onboarding, status, mobile, a11y, queue API |
 | `__mocks__/msw/` | Optional MSW handlers |
 
@@ -579,14 +590,15 @@ npm run pwa:vapid        # print new VAPID key pair
 app/                      # App Router pages (static export; no Next API routes)
 backend/                  # FastAPI app server (API + static out/)
   main.py                 # Health, SPA serve, /location|display redirects
-  qflow_api/              # Routers: queue, staff, admin, auth, user, display, status
-  tests/                  # pytest
+  qflow_api/              # Routers: queue, staff, admin, auth, user, display, status, misc (push)
+    push_service.py       # Web Push send (pywebpush) + dispatch auth
+  tests/                  # pytest (incl. test_push_service.py)
 out/                      # Built static UI (gitignored locally; produced by build:web)
 components/qflow/         # Screens, shell, join-queue-drawer, banners, PWA
 components/qflow/error-boundary.tsx  # Catches render errors → POST /api/errors → client_errors
 components/qflow/illustrations/
 components/ui/            # shadcn (drawer, button, …)
-lib/                      # Context, routes, i18n, Supabase, push, api-client, rate-limit
+lib/                      # Context, routes, i18n, Supabase, push-client, api-client, rate-limit
 __tests__/                # Jest
 e2e/                      # Playwright
 __mocks__/msw/
@@ -594,8 +606,8 @@ jest.config.ts
 playwright.config.ts
 lighthouserc.js
 public/                   # manifest, service worker, icons
-supabase/migrations/      # includes …_client_errors.sql
-supabase/functions/       # Edge Functions (push-dispatch)
+supabase/migrations/      # includes …_client_errors.sql, claim RPCs, push_subscriptions
+supabase/functions/       # Edge Functions (push-dispatch fallback → FastAPI)
 STAFF_ONBOARDING.md       # Internal runbook: hidden staff/admin login gestures
 scripts/
 .github/workflows/
@@ -637,7 +649,8 @@ eslint.config.mjs
 | Counter display | Pin `/display/_/?id=<locationId>` on desk hardware |
 | Visit ratings | Ineligible `/rate` → `/home?toast=rate_denied` |
 | Supabase tables / RLS | `npm run check:supabase` |
-| `pg_net` | Often unavailable — use staff dispatch and/or Edge Function |
+| `pg_net` | Often unavailable — use staff JWT dispatch and/or Edge Function → FastAPI |
+| Push on status page | Needs VAPID **and** `PUSH_DISPATCH_SECRET` for `operational` |
 | Upstash | Optional; set for multi-instance OTP limits |
 | Uptime | UptimeRobot (external) — see below |
 | Backups | Pro + PITR + weekly `npm run db:backup` |
