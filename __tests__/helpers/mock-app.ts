@@ -107,6 +107,21 @@ export function createAppMock(overrides: Record<string, unknown> = {}) {
     hasCompletedOnboarding: true,
     activeQueue: null,
     notifications: [],
+    accessibility: {
+      textSize: "normal",
+      highContrast: false,
+      simplifiedMode: false,
+      buttonSize: "normal",
+    },
+    setAccessibility: jest.fn(),
+    notificationPreferences: {
+      notify5Away: true,
+      notify2Away: true,
+      notifyTurn: true,
+      notifyFaster: false,
+      notifyPaused: false,
+    },
+    setNotificationPreferences: jest.fn().mockResolvedValue(true),
     ...overrides,
   }
 }

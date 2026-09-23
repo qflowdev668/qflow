@@ -25,6 +25,7 @@ export interface Database {
           language: string
           cell_number: string | null
           sms_notifications: boolean
+          notification_preferences: Record<string, boolean> | null
           created_at: string
         }
         Insert: {
@@ -37,6 +38,7 @@ export interface Database {
           language?: string
           cell_number?: string | null
           sms_notifications?: boolean
+          notification_preferences?: Record<string, boolean> | null
           created_at?: string
         }
         Update: {
@@ -49,6 +51,7 @@ export interface Database {
           language?: string
           cell_number?: string | null
           sms_notifications?: boolean
+          notification_preferences?: Record<string, boolean> | null
         }
         Relationships: []
       }

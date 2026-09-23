@@ -1,5 +1,6 @@
 "use client"
 
+import { BOTTOM_NAV_HEIGHT_PX, BOTTOM_CHROME_GAP_PX } from "@/lib/bottom-chrome"
 import { cn } from "@/lib/utils"
 import type { ReactNode } from "react"
 
@@ -7,7 +8,9 @@ import type { ReactNode } from "react"
  * Bolt-inspired 3-panel layout for user information screens:
  * 1. Hero — illustration (works without reading)
  * 2. Content — title + message
- * 3. Action — primary CTA pinned to bottom
+ * 3. Action — primary CTA pinned above the tab bar
+ *
+ * Stays inside the AppShell max-w-md column (never full-bleed past the phone frame).
  */
 export function UserScreenLayout({
   illustration,
@@ -17,6 +20,7 @@ export function UserScreenLayout({
   footer,
   onSkip,
   skipLabel,
+  clearBottomNav = true,
   className,
 }: {
   illustration: ReactNode
@@ -26,12 +30,20 @@ export function UserScreenLayout({
   footer: ReactNode
   onSkip?: () => void
   skipLabel?: string
+  /** Reserve space for the portaled BottomNav (customer screens). */
+  clearBottomNav?: boolean
   className?: string
 }) {
   return (
-    <div className={cn("fixed inset-0 bg-white flex flex-col", className)}>
+    <div
+      data-testid="user-screen-layout"
+      className={cn(
+        "relative mx-auto flex min-h-dvh w-full max-w-md flex-col bg-white",
+        className
+      )}
+    >
       {onSkip && (
-        <div className="flex justify-end p-4 shrink-0">
+        <div className="flex shrink-0 justify-end p-4">
           <button
             type="button"
             onClick={onSkip}
@@ -42,28 +54,35 @@ export function UserScreenLayout({
         </div>
       )}
 
-      {/* Panel 1 — visual hero */}
-      <div className="px-6 pt-2 pb-4 shrink-0">
-        <div className="w-full max-w-sm mx-auto overflow-hidden rounded-3xl shadow-sm border border-border/60">
+      <div className="shrink-0 px-6 pb-4 pt-2">
+        <div className="mx-auto w-full max-w-sm overflow-hidden rounded-3xl border border-border/60 shadow-sm">
           {illustration}
         </div>
       </div>
 
-      {/* Panel 2 — message */}
-      <div className="flex-1 px-6 overflow-y-auto">
-        <h1 className="text-[1.75rem] leading-tight font-bold text-foreground tracking-tight mb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6">
+        <h1 className="mb-3 text-[1.75rem] font-bold leading-tight tracking-tight text-foreground">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-base text-muted-foreground leading-relaxed max-w-md">
+          <p className="max-w-md text-base leading-relaxed text-muted-foreground">
             {subtitle}
           </p>
         )}
         {children}
       </div>
 
-      {/* Panel 3 — action */}
-      <div className="shrink-0 p-6 pb-8 border-t border-border/80 bg-white">
+      <div
+        data-testid="user-screen-layout-footer"
+        className="shrink-0 border-t border-border/80 bg-white px-6 pt-6"
+        style={
+          clearBottomNav
+            ? {
+                paddingBottom: `calc(${BOTTOM_NAV_HEIGHT_PX + BOTTOM_CHROME_GAP_PX + 8}px + env(safe-area-inset-bottom, 0px))`,
+              }
+            : { paddingBottom: "2rem" }
+        }
+      >
         {footer}
       </div>
     </div>
@@ -90,17 +109,17 @@ export function MenuRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-4 py-4 text-left border-b border-border/80 last:border-0",
+        "flex w-full items-center gap-4 border-b border-border/80 py-4 text-left last:border-0",
         className
       )}
     >
-      <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
-        <Icon className="w-5 h-5 text-foreground" />
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted">
+        <Icon className="h-5 w-5 text-foreground" />
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="font-semibold text-foreground">{label}</p>
         {sublabel && (
-          <p className="text-sm text-muted-foreground mt-0.5">{sublabel}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{sublabel}</p>
         )}
       </div>
       {right}
@@ -133,15 +152,15 @@ export function QuickActionTile({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex flex-col items-start p-4 rounded-2xl border border-border/80 bg-white",
-        "hover:border-primary/30 transition-colors text-left min-w-[140px] flex-1"
+        "flex min-w-[140px] flex-1 flex-col items-start rounded-2xl border border-border/80 bg-white p-4 text-left",
+        "transition-colors hover:border-primary/30"
       )}
     >
-      <div className={cn("w-full h-20 rounded-xl overflow-hidden mb-3", accentBg)}>
+      <div className={cn("mb-3 h-20 w-full overflow-hidden rounded-xl", accentBg)}>
         {illustration}
       </div>
-      <p className="font-bold text-foreground text-sm">{title}</p>
-      <p className="text-xs text-muted-foreground mt-1 leading-snug">{subtitle}</p>
+      <p className="text-sm font-bold text-foreground">{title}</p>
+      <p className="mt-1 text-xs leading-snug text-muted-foreground">{subtitle}</p>
     </button>
   )
 }

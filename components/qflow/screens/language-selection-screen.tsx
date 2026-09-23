@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useApp, languageOptions, Language } from "@/lib/app-context"
 import { getTranslations } from "@/lib/i18n"
+import { useChromeInsets } from "@/hooks/use-chrome-insets"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -12,6 +13,7 @@ export function LanguageSelectionScreen() {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>(language)
   const [showToast, setShowToast] = useState(false)
   const [toastMessage, setToastMessage] = useState("")
+  const { paddingBottom } = useChromeInsets()
 
   const preview = getTranslations(selectedLanguage)
 
@@ -27,24 +29,24 @@ export function LanguageSelectionScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={{ paddingBottom }}>
       <TopBar title={preview.selectLanguage} showBack onBack={() => navigateTo("profile")} />
 
       <div className="p-4">
-        <p className="text-sm text-gray-500 text-center mb-6">
+        <p className="mb-6 text-center text-sm text-gray-500">
           {preview.chooseLanguage}
         </p>
 
-        <div className="space-y-2 mb-8">
+        <div className="mb-8 space-y-2">
           {languageOptions.map((lang) => (
             <button
               key={lang.code}
               onClick={() => setSelectedLanguage(lang.code)}
               className={cn(
-                "w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-colors min-h-[60px]",
+                "flex min-h-[60px] w-full items-center justify-between rounded-2xl border-2 p-4 transition-colors",
                 selectedLanguage === lang.code
-                  ? "bg-blue-50 border-blue-200"
-                  : "bg-white border-gray-200 hover:border-gray-300"
+                  ? "border-blue-200 bg-blue-50"
+                  : "border-gray-200 bg-white hover:border-gray-300"
               )}
             >
               <div className="flex items-center gap-3">
@@ -56,14 +58,14 @@ export function LanguageSelectionScreen() {
               </div>
               <div
                 className={cn(
-                  "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                  "flex h-5 w-5 items-center justify-center rounded-full border-2",
                   selectedLanguage === lang.code
                     ? "border-[#2563EB]"
                     : "border-gray-300"
                 )}
               >
                 {selectedLanguage === lang.code && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#2563EB]" />
                 )}
               </div>
             </button>
@@ -71,29 +73,32 @@ export function LanguageSelectionScreen() {
         </div>
 
         <div className="mb-8">
-          <p className="text-sm text-gray-500 text-center mb-3">{preview.preview}</p>
-          <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
-            <p className="text-foreground font-medium">{preview.youreInQueue}</p>
+          <p className="mb-3 text-center text-sm text-gray-500">{preview.preview}</p>
+          <div className="space-y-2 rounded-2xl bg-gray-50 p-4">
+            <p className="font-medium text-foreground">{preview.youreInQueue}</p>
             <p className="text-gray-600">
               {preview.peopleAhead} {activeQueue ? activeQueue.position - 1 : 0}
             </p>
             <p className="text-gray-600">
               {preview.estWait} ~{activeQueue?.estimatedWait ?? 0} min
             </p>
-            <p className="text-[#EF4444] font-medium mt-2">{preview.leaveQueue}</p>
+            <p className="mt-2 font-medium text-[#EF4444]">{preview.leaveQueue}</p>
           </div>
         </div>
 
         <Button
           onClick={handleSave}
-          className="w-full h-[52px] text-base font-semibold bg-[#2563EB] hover:bg-[#2563EB]/90"
+          className="h-[52px] w-full bg-[#2563EB] text-base font-semibold hover:bg-[#2563EB]/90"
         >
           {preview.saveLanguage}
         </Button>
       </div>
 
       {showToast && (
-        <div className="fixed bottom-6 left-4 right-4 bg-card border border-border rounded-xl p-4 shadow-lg z-50 animate-in slide-in-from-bottom">
+        <div
+          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl border border-border bg-card p-4 shadow-lg animate-in slide-in-from-bottom"
+          style={{ bottom: paddingBottom }}
+        >
           <p className="text-center text-foreground">{toastMessage}</p>
         </div>
       )}

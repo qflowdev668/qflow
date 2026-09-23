@@ -166,6 +166,7 @@ export function OnboardingScreen() {
       subtitle={step.description}
       onSkip={handleSkip}
       skipLabel={t.skip}
+      clearBottomNav={false}
       footer={primaryButton}
     />
   )

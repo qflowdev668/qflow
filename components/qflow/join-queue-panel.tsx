@@ -17,6 +17,7 @@ import {
   Flame,
   HeartPulse,
   Medal,
+  Navigation,
   Shield,
   Siren,
   UserCircle,
@@ -84,6 +85,9 @@ type JoinQueuePanelProps = {
   mode?: JoinQueuePanelMode
   /** Animate wait / people numbers with RollerDigit (Flow Bar expanded). */
   useRollerDigits?: boolean
+  /** Show Directions when user geolocation is available (map flow). */
+  showDirections?: boolean
+  onDirections?: () => void
   onJoined?: () => void
   onLeft?: () => void
   onViewQueue?: () => void
@@ -97,6 +101,8 @@ export function JoinQueuePanel({
   location,
   mode = "join",
   useRollerDigits = false,
+  showDirections = false,
+  onDirections,
   onJoined,
   onLeft,
   onViewQueue,
@@ -211,6 +217,19 @@ export function JoinQueuePanel({
             {PeopleValue}
           </div>
         </div>
+      )}
+
+      {showDirections && loc && onDirections && (
+        <Button
+          type="button"
+          variant="outline"
+          data-testid="directions-button"
+          onClick={onDirections}
+          className="w-full h-11 rounded-xl border-primary/30 text-primary"
+        >
+          <Navigation className="w-4 h-4 mr-2" />
+          {t.getDirections}
+        </Button>
       )}
 
       {!isActiveMode && (

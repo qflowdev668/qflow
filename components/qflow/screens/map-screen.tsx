@@ -1,74 +1,149 @@
 "use client"
 
-import { useState } from "react"
-import { useApp, Location } from "@/lib/app-context"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useApp, type Location } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
-import { getMapPinCapacityInfo } from "@/lib/capacity-i18n"
 import { BottomNav } from "@/components/qflow/bottom-nav"
 import { JoinQueueDrawer } from "@/components/qflow/join-queue-drawer"
-import { Search, Filter } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { QflowMap } from "@/components/qflow/qflow-map"
+import { RouteSummaryCard } from "@/components/qflow/route-summary-card"
+import {
+  detectUserLocation,
+  locationBannerMessage,
+  LOW_ACCURACY_METERS,
+  type GeoCoords,
+  type GeoFailReason,
+} from "@/lib/map-geolocation"
+import {
+  fetchMapboxRoute,
+  type TravelProfile,
+} from "@/lib/mapbox-directions"
+import {
+  clearActiveRoute,
+  setActiveRoute,
+  useActiveRoute,
+} from "@/lib/active-route-store"
+import { ABOVE_BOTTOM_NAV } from "@/lib/bottom-chrome"
+import { MapLocationSearch } from "@/components/qflow/map-location-search"
+import { Filter, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const MAP_WIDTH = 400
-const MAP_HEIGHT = 800
-const MAP_PADDING = 60
-
-function projectPins(locations: Location[]) {
-  if (locations.length === 0) return new Map<string, { x: number; y: number }>()
-
-  const lats = locations.map((l) => l.coordinates.lat)
-  const lngs = locations.map((l) => l.coordinates.lng)
-  const minLat = Math.min(...lats)
-  const maxLat = Math.max(...lats)
-  const minLng = Math.min(...lngs)
-  const maxLng = Math.max(...lngs)
-
-  const spanLat = maxLat - minLat || 1
-  const spanLng = maxLng - minLng || 1
-
-  return new Map(
-    locations.map((loc) => [
-      loc.id,
-      {
-        x:
-          MAP_PADDING +
-          ((loc.coordinates.lng - minLng) / spanLng) * (MAP_WIDTH - MAP_PADDING * 2),
-        y:
-          MAP_PADDING +
-          ((maxLat - loc.coordinates.lat) / spanLat) * (MAP_HEIGHT - MAP_PADDING * 2),
-      },
-    ])
-  )
-}
-
 export function MapScreen() {
-  const { locations, setSelectedLocation: setContextLocation } = useApp()
+  const {
+    locations,
+    setSelectedLocation: setContextLocation,
+    activeQueue,
+  } = useApp()
   const t = useT()
+  const activeRoute = useActiveRoute()
+
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null)
   const [capacityFilter, setCapacityFilter] = useState<"all" | "available" | "busy" | "full">("all")
   const [joinDrawerOpen, setJoinDrawerOpen] = useState(false)
 
-  const filteredLocations = locations.filter((loc) => {
-    const matchesSearch =
-      loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.address.toLowerCase().includes(searchQuery.toLowerCase())
-    if (!matchesSearch) return false
+  const [userLocation, setUserLocation] = useState<GeoCoords | null>(null)
+  const [locationFailReason, setLocationFailReason] = useState<GeoFailReason | null>(null)
+  const [showLocationBanner, setShowLocationBanner] = useState(false)
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [centerOnUserToken, setCenterOnUserToken] = useState<number | null>(null)
 
-    const pct = loc.capacity > 0 ? (loc.queueCount / loc.capacity) * 100 : 0
-    if (capacityFilter === "available") return pct < 76
-    if (capacityFilter === "busy") return pct >= 76 && pct < 100
-    if (capacityFilter === "full") return pct >= 100
-    return true
-  })
+  const [routeError, setRouteError] = useState<string | null>(null)
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [travelProfile, setTravelProfile] = useState<TravelProfile>(
+    activeRoute?.route.profile ?? "walking"
+  )
 
-  const pins = projectPins(filteredLocations)
+  const requestLocation = useCallback(async () => {
+    setLocationLoading(true)
+    const result = await detectUserLocation()
+    setLocationLoading(false)
+    if (result.ok) {
+      setUserLocation(result.coords)
+      setLocationFailReason(null)
+      setShowLocationBanner(false)
+      setCenterOnUserToken(Date.now())
+      return
+    }
+    setUserLocation(null)
+    setLocationFailReason(result.reason)
+    setShowLocationBanner(true)
+  }, [])
+
+  useEffect(() => {
+    void requestLocation()
+  }, [requestLocation])
+
+  useEffect(() => {
+    if (activeRoute?.route.profile) {
+      setTravelProfile(activeRoute.route.profile)
+    }
+  }, [activeRoute?.route.profile])
+
+  const filteredLocations = useMemo(
+    () =>
+      locations.filter((loc) => {
+        const matchesSearch =
+          loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          loc.address.toLowerCase().includes(searchQuery.toLowerCase())
+        if (!matchesSearch) return false
+
+        const pct = loc.capacity > 0 ? (loc.queueCount / loc.capacity) * 100 : 0
+        if (capacityFilter === "available") return pct < 76
+        if (capacityFilter === "busy") return pct >= 76 && pct < 100
+        if (capacityFilter === "full") return pct >= 100
+        return true
+      }),
+    [locations, searchQuery, capacityFilter]
+  )
 
   const handlePinClick = (location: Location) => {
+    // Do not clear the active-queue route when browsing another pin.
     setSelectedLocation(location)
     setContextLocation(location)
     setJoinDrawerOpen(true)
+    setSearchQuery("")
+  }
+
+  const loadDirections = useCallback(
+    async (destination: Location, profile: TravelProfile = travelProfile) => {
+      if (!userLocation) return
+      setRouteLoading(true)
+      setRouteError(null)
+
+      // Requesting directions to a different place replaces the previous route.
+      if (activeRoute && activeRoute.locationId !== destination.id) {
+        clearActiveRoute()
+      }
+
+      const result = await fetchMapboxRoute(
+        userLocation,
+        destination.coordinates,
+        profile
+      )
+      setRouteLoading(false)
+      if (!result.ok) {
+        setRouteError(result.error)
+        return
+      }
+      setTravelProfile(profile)
+      setActiveRoute({
+        queueEntryId:
+          activeQueue && activeQueue.locationId === destination.id
+            ? activeQueue.id
+            : null,
+        locationId: destination.id,
+        locationCoords: destination.coordinates,
+        route: result.route,
+      })
+    },
+    [userLocation, travelProfile, activeRoute, activeQueue]
+  )
+
+  const directionsTarget = selectedLocation
+  const handleDirections = () => {
+    if (!directionsTarget) return
+    void loadDirections(directionsTarget, "walking")
   }
 
   const cycleCapacityFilter = () => {
@@ -89,98 +164,94 @@ export function MapScreen() {
           ? t.filterFull
           : t.filterAll
 
+  const showRouteCard = Boolean(
+    !activeQueue && (activeRoute || routeError || routeLoading)
+  )
+
   return (
-    <div className="fixed inset-0 bg-background">
-      <div className="absolute inset-0 bg-[#e8f0e8]">
-        <svg className="w-full h-full" viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#d1ddd1" strokeWidth="1"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)"/>
-          
-          <path d="M 0 200 L 400 200" stroke="#fff" strokeWidth="8" />
-          <path d="M 0 400 L 400 400" stroke="#fff" strokeWidth="8" />
-          <path d="M 0 600 L 400 600" stroke="#fff" strokeWidth="8" />
-          <path d="M 100 0 L 100 800" stroke="#fff" strokeWidth="6" />
-          <path d="M 200 0 L 200 800" stroke="#fff" strokeWidth="10" />
-          <path d="M 300 0 L 300 800" stroke="#fff" strokeWidth="6" />
-          
-          {filteredLocations.map((loc) => {
-            const pos = pins.get(loc.id)
-            if (!pos) return null
-            const isSelected = selectedLocation?.id === loc.id
-            const capacityInfo = getMapPinCapacityInfo(t, loc.queueCount, loc.capacity)
-            
-            return (
-              <g 
-                key={loc.id} 
-                onClick={() => handlePinClick(loc)}
-                className="cursor-pointer"
-              >
-                {capacityInfo.pulsing && (
-                  <circle 
-                    cx={pos.x} 
-                    cy={pos.y} 
-                    r={28} 
-                    fill="none" 
-                    stroke={capacityInfo.color}
-                    strokeWidth="2" 
-                    opacity="0.5"
-                    className="animate-ping"
-                  />
-                )}
-                <circle 
-                  cx={pos.x} 
-                  cy={pos.y} 
-                  r={isSelected ? 24 : 18} 
-                  fill={isSelected ? "#2563EB" : capacityInfo.color} 
-                  className="transition-all"
-                />
-                <circle cx={pos.x} cy={pos.y - 2} r={6} fill="#fff" />
-                {isSelected && (
-                  <circle 
-                    cx={pos.x} 
-                    cy={pos.y} 
-                    r={32} 
-                    fill="none" 
-                    stroke="#2563EB" 
-                    strokeWidth="2" 
-                    opacity="0.5"
-                    className="animate-ping"
-                  />
-                )}
-              </g>
-            )
-          })}
-        </svg>
+    <div className="fixed inset-0 z-0 mx-auto w-full max-w-md overflow-hidden bg-[#EFF6FF]">
+      <div className="absolute inset-0 z-0 h-full w-full">
+        <QflowMap
+          locations={filteredLocations}
+          selectedLocationId={selectedLocation?.id ?? activeRoute?.locationId ?? null}
+          onSelectLocation={handlePinClick}
+          t={t}
+          focusToken={searchQuery.trim()}
+          userLocation={userLocation}
+          centerOnUserToken={centerOnUserToken}
+          routeGeometry={activeRoute?.route.geometry ?? null}
+          lockCamera={Boolean(activeRoute)}
+        />
       </div>
 
-      <div className="absolute top-4 left-4 right-4 z-10">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder={t.searchLocations}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-12 h-12 bg-card shadow-lg border-0"
+      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
+        <div className="pointer-events-auto">
+          <MapLocationSearch
+            locations={locations}
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            onSelectLocation={handlePinClick}
+            t={t}
+            trailing={
+              <button
+                type="button"
+                onClick={cycleCapacityFilter}
+                aria-label={filterLabel}
+                title={filterLabel}
+                className={cn(
+                  "absolute right-3 top-3 z-[1] rounded-lg p-1",
+                  capacityFilter === "all" ? "bg-muted" : "bg-primary text-primary-foreground"
+                )}
+              >
+                <Filter className="h-4 w-4" />
+              </button>
+            }
           />
-          <button
-            type="button"
-            onClick={cycleCapacityFilter}
-            aria-label={filterLabel}
-            title={filterLabel}
-            className={cn(
-              "absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg",
-              capacityFilter === "all" ? "bg-muted" : "bg-primary text-primary-foreground"
-            )}
-          >
-            <Filter className="w-4 h-4" />
-          </button>
         </div>
       </div>
+
+      {showLocationBanner && locationFailReason && (
+        <div
+          className="absolute top-[4.5rem] left-4 right-20 z-10 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 shadow-sm"
+          data-testid="location-denied-banner"
+          role="status"
+        >
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1 space-y-2">
+              <p className="text-xs text-amber-900 leading-relaxed">
+                {locationBannerMessage(locationFailReason)}
+              </p>
+              <button
+                type="button"
+                data-testid="location-try-again"
+                disabled={locationLoading}
+                className="rounded-lg bg-amber-900 px-2.5 py-1.5 text-xs font-medium text-amber-50 disabled:opacity-60"
+                onClick={() => void requestLocation()}
+              >
+                {locationLoading ? "Checking…" : "Try again"}
+              </button>
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              className="shrink-0 rounded-md p-1 text-amber-800 hover:bg-amber-100"
+              onClick={() => setShowLocationBanner(false)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {userLocation?.accuracyMeters != null &&
+        userLocation.accuracyMeters > LOW_ACCURACY_METERS && (
+          <div
+            className="absolute top-[4.5rem] left-4 right-20 z-10 rounded-lg bg-card/95 px-2.5 py-1.5 text-[11px] text-muted-foreground shadow-sm border border-border"
+            data-testid="location-accuracy-hint"
+          >
+            Location accuracy ±{Math.round(userLocation.accuracyMeters / 1000)} km
+          </div>
+        )}
 
       <div className="absolute top-20 right-4 bg-card rounded-lg shadow-lg p-3 z-10">
         <p className="text-xs font-medium text-foreground mb-2">{t.capacity}</p>
@@ -204,12 +275,49 @@ export function MapScreen() {
         </div>
       </div>
 
+      {showRouteCard && (
+        <div
+          className="absolute left-4 right-4 z-20"
+          style={{ bottom: ABOVE_BOTTOM_NAV }}
+        >
+          <RouteSummaryCard
+            route={activeRoute?.route ?? null}
+            destination={
+              activeRoute?.locationCoords ??
+              selectedLocation?.coordinates ?? { lat: 0, lng: 0 }
+            }
+            travelProfile={travelProfile}
+            loading={routeLoading}
+            error={routeError}
+            onRetry={() => {
+              const dest =
+                selectedLocation ??
+                locations.find((l) => l.id === activeRoute?.locationId) ??
+                null
+              if (dest) void loadDirections(dest, travelProfile)
+            }}
+            onProfileChange={(profile) => {
+              const dest =
+                selectedLocation ??
+                locations.find((l) => l.id === activeRoute?.locationId) ??
+                null
+              if (dest) void loadDirections(dest, profile)
+            }}
+          />
+        </div>
+      )}
+
       <JoinQueueDrawer
         open={joinDrawerOpen}
         location={selectedLocation}
+        showDirections={Boolean(userLocation) && !activeRoute}
+        onDirections={handleDirections}
         onOpenChange={(open) => {
           setJoinDrawerOpen(open)
-          if (!open) setSelectedLocation(null)
+          if (!open) {
+            setSelectedLocation(null)
+            // Route stays drawn — cleared only when the queue entry ends.
+          }
         }}
       />
 

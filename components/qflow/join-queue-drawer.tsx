@@ -12,15 +12,24 @@ import {
 } from "@/components/ui/drawer"
 import { JoinQueuePanel } from "@/components/qflow/join-queue-panel"
 import { MapPin } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 type JoinQueueDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   location?: Location | null
+  showDirections?: boolean
+  onDirections?: () => void
 }
 
 /** Bottom sheet: location + join. Two taps for a standard join; a third if they pick priority. */
-export function JoinQueueDrawer({ open, onOpenChange, location }: JoinQueueDrawerProps) {
+export function JoinQueueDrawer({
+  open,
+  onOpenChange,
+  location,
+  showDirections = false,
+  onDirections,
+}: JoinQueueDrawerProps) {
   const { selectedLocation, clearAuthError } = useApp()
   const t = useT()
   const loc = location ?? selectedLocation
@@ -37,8 +46,11 @@ export function JoinQueueDrawer({ open, onOpenChange, location }: JoinQueueDrawe
       shouldScaleBackground={false}
       repositionInputs={false}
     >
-      <DrawerContent className="mx-auto w-full max-w-md max-h-[88vh]">
-        <DrawerHeader className="text-left pb-2">
+      <DrawerContent
+        data-testid="join-queue-drawer"
+        className={cn("mx-auto w-full max-w-md")}
+      >
+        <DrawerHeader className="text-left pb-2 shrink-0">
           <DrawerTitle className="text-xl leading-tight">
             {loc?.name ?? t.noLocationSelected}
           </DrawerTitle>
@@ -48,10 +60,12 @@ export function JoinQueueDrawer({ open, onOpenChange, location }: JoinQueueDrawe
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="px-4 pb-6 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <JoinQueuePanel
             location={loc}
             mode="join"
+            showDirections={showDirections}
+            onDirections={onDirections}
             onJoined={() => onOpenChange(false)}
             onViewQueue={() => onOpenChange(false)}
           />

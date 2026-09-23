@@ -99,27 +99,48 @@ async function dispatchPush(input: {
   return { ok: true }
 }
 
-function messageForStatus(status: string): { body: string; url: string } | null {
+function messageForStatus(status: string): { body: string; url: string; prefKey: string } | null {
   // Keep in sync with lib/notification-templates.ts (en).
   if (status === "serving" || status === "your-turn") {
     return {
       body: "It is your turn. Please head to the counter.",
       url: "/queue",
+      prefKey: "notifyTurn",
     }
   }
   if (status === "almost") {
     return {
       body: "Get ready — you are almost next in the queue. Please come now.",
       url: "/queue",
+      prefKey: "notify2Away",
     }
   }
   if (status === "no-show") {
     return {
       body: "You were marked as a no-show.",
       url: "/notifications",
+      prefKey: "notifyTurn", // lifecycle; still gated by turn-related alerts
     }
   }
   return null
+}
+
+async function userAllowsAlert(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  prefKey: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("notification_preferences")
+    .eq("id", userId)
+    .maybeSingle()
+  const prefs = (data?.notification_preferences ?? {}) as Record<string, unknown>
+  // Default ON when key missing (matches client defaults for core alerts).
+  if (prefKey === "notifyFaster" || prefKey === "notifyPaused") {
+    return prefs[prefKey] === true
+  }
+  return prefs[prefKey] !== false
 }
 
 async function handleQueueChange(
@@ -138,6 +159,15 @@ async function handleQueueChange(
   const msg = messageForStatus(record.status)
   if (!msg) {
     return { dispatched: false, reason: `status ${record.status} ignored` }
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  )
+  const allowed = await userAllowsAlert(supabase, record.user_id, msg.prefKey)
+  if (!allowed) {
+    return { dispatched: false, reason: `user opted out of ${msg.prefKey}` }
   }
 
   const result = await dispatchPush({

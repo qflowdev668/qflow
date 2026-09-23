@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
+import { useChromeInsets } from "@/hooks/use-chrome-insets"
 import { TopBar } from "@/components/qflow/top-bar"
 import { MenuRow } from "@/components/qflow/user-screen-layout"
 import { HelpSupportScene } from "@/components/qflow/illustrations/queue-scenes"
@@ -20,6 +21,7 @@ const SUPPORT_EMAIL = "support@qflow.co.za"
 export function HelpSupportScreen() {
   const { navigateTo } = useApp()
   const t = useT()
+  const { paddingBottom } = useChromeInsets()
   const [clearing, setClearing] = useState(false)
 
   const faqs = [
@@ -55,20 +57,19 @@ export function HelpSupportScreen() {
         }}
       />
 
-      <div className="flex-1 min-h-0 overflow-y-auto pb-8">
-        {/* Panel 1 — visual hero */}
-        <div className="px-4 pt-2 pb-4">
-          <div className="rounded-3xl overflow-hidden border border-border/80">
+      <div className="min-h-0 flex-1 overflow-y-auto" style={{ paddingBottom }} data-testid="help-support-screen">
+        {/* Compact hero so FAQ is visible without scrolling on most phones */}
+        <div className="px-4 pb-2 pt-2">
+          <div className="mx-auto max-h-36 overflow-hidden rounded-3xl border border-border/80">
             <HelpSupportScene className="w-full h-auto" />
           </div>
         </div>
 
         <div className="px-4">
-          <p className="text-base text-muted-foreground mb-6">{t.helpIntro}</p>
+          <p className="mb-4 text-base text-muted-foreground">{t.helpIntro}</p>
 
-          {/* Panel 2 — common questions (answers always visible) */}
-          <section className="mb-8">
-            <h2 className="text-lg font-bold text-foreground mb-3">
+          <section className="mb-8" data-testid="help-faq">
+            <h2 className="mb-3 text-lg font-bold text-foreground">
               {t.helpSectionCommonQuestions}
             </h2>
             <div className="rounded-2xl border border-border/80 bg-card divide-y divide-border/80">
@@ -82,10 +83,21 @@ export function HelpSupportScreen() {
           </section>
 
           {/* Panel 3 — contact & technical */}
-          <section className="rounded-2xl border border-border/80 p-4 mb-6 bg-card">
-            <h2 className="font-bold text-foreground mb-2">{t.helpSectionContact}</h2>
-            <p className="text-sm text-muted-foreground mb-2">{t.helpContactDesc}</p>
-            <p className="text-sm font-bold text-foreground mb-4">{SUPPORT_EMAIL}</p>
+          <section
+            className="mb-6 rounded-2xl border border-border/80 bg-card p-4"
+            data-testid="help-contact"
+          >
+            <h2 className="mb-2 font-bold text-foreground">{t.helpSectionContact}</h2>
+            <p className="mb-2 text-sm text-muted-foreground">{t.helpContactDesc}</p>
+            <p className="mb-4 text-sm font-bold text-foreground">
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="underline underline-offset-2"
+                data-testid="help-support-email"
+              >
+                {SUPPORT_EMAIL}
+              </a>
+            </p>
             <Button type="button" className="w-full h-12 rounded-2xl font-bold" asChild>
               <a
                 href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("QFlow support")}`}
@@ -116,7 +128,8 @@ export function HelpSupportScreen() {
                 onClick={() => {
                   window.location.href = "/status"
                 }}
-                right={<ChevronRight className="w-5 h-5 text-muted-foreground" />}
+                right={<ChevronRight className="h-5 w-5 text-muted-foreground" />}
+                className="help-status-link"
               />
               <MenuRow
                 icon={RotateCcw}

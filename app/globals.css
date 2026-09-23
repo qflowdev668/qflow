@@ -341,6 +341,123 @@
   animation: flowbar-bounce 0.7s ease-out 1;
 }
 
+/* /queue "You're next" — ring breathes while #1 and still waiting. */
+@keyframes qflow-next-ring-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+.qflow-next-ring {
+  animation: qflow-next-ring-breathe 2s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qflow-next-ring {
+    animation: none !important;
+  }
+}
+
+/* Mapbox must fill its absolutely positioned host — default canvas can collapse short. */
+.qflow-map-canvas,
+.qflow-map-canvas .mapboxgl-map,
+.qflow-map-canvas .mapboxgl-canvas-container,
+.qflow-map-canvas .mapboxgl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* When the customer tab bar is mounted, every bottom Vaul drawer clears it. */
+body[data-has-bottom-nav] [data-slot="drawer-content"][data-vaul-drawer-direction="bottom"] {
+  bottom: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.safe-area-pb {
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+}
+
+/* Accessibility: button touch targets from /profile/accessibility */
+html[data-button-size="large"] [data-slot="button"] {
+  min-height: 3rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  font-size: 1rem;
+}
+html[data-button-size="x-large"] [data-slot="button"] {
+  min-height: 3.5rem;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  font-size: 1.125rem;
+}
+
+html[data-text-size="large"] {
+  font-size: 112.5%;
+}
+html[data-text-size="x-large"] {
+  font-size: 125%;
+}
+html[data-text-size="small"] {
+  font-size: 93.75%;
+}
+
+/* High contrast theme (toggled via .high-contrast-mode on <html>) */
+html.high-contrast-mode {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --card: 0 0% 10%;
+  --card-foreground: 0 0% 100%;
+  --popover: 0 0% 10%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 60 100% 50%;
+  --primary-foreground: 0 0% 0%;
+  --secondary: 0 0% 12%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 70%;
+  --accent: 0 0% 15%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 100%;
+  --input: 0 0% 100%;
+  --ring: 60 100% 50%;
+  color-scheme: dark;
+}
+html.high-contrast-mode body {
+  background-color: #000;
+  color: #fff;
+}
+html.high-contrast-mode .bg-background {
+  background-color: #000 !important;
+}
+html.high-contrast-mode .bg-card {
+  background-color: #1a1a1a !important;
+  border-color: #fff !important;
+}
+html.high-contrast-mode .bg-primary,
+html.high-contrast-mode button[data-slot="button"]:not([class*="outline"]):not([class*="ghost"]) {
+  background-color: #ffff00 !important;
+  color: #000 !important;
+}
+html.high-contrast-mode .text-foreground,
+html.high-contrast-mode .text-card-foreground {
+  color: #fff !important;
+}
+html.high-contrast-mode .text-muted-foreground {
+  color: #b3b3b3 !important;
+}
+html.high-contrast-mode .border-border {
+  border-color: #fff !important;
+}
+
 /* Print styles for manual ticket */
 @media print {
   body * {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useReducedMotion } from "framer-motion"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
@@ -9,8 +10,10 @@ import { EmptyQueueScene } from "@/components/qflow/illustrations/queue-scenes"
 import { useOfflineStatus } from "@/components/qflow/offline-banner"
 import { Button } from "@/components/ui/button"
 import { AVG_SERVICE_MINUTES, ACTIVE_STAFF } from "@/lib/supabase/helpers"
-import { MapPin, Clock, AlertCircle, Building2, XCircle, WifiOff, Bell } from "lucide-react"
+import { isAboutToBeCalled } from "@/lib/queue-next-state"
+import { MapPin, Clock, AlertCircle, Building2, XCircle, WifiOff, Bell, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ABOVE_BOTTOM_NAV } from "@/lib/bottom-chrome"
 
 const isToday = (date: Date) => {
   const now = new Date()
@@ -25,10 +28,20 @@ export function MyQueueScreen() {
   const { activeQueue, leaveQueue, navigateTo, accessibility, queueHistory, lastSyncedAt } = useApp()
   const t = useT()
   const isOffline = useOfflineStatus()
+  const reduceMotion = useReducedMotion()
   const [showOfflineTooltip, setShowOfflineTooltip] = useState(false)
-  const [simpleViewActive, setSimpleViewActive] = useState(false)
+  const [simpleViewActive, setSimpleViewActive] = useState(
+    () => accessibility.simplifiedMode
+  )
   const [noShowDismissed, setNoShowDismissed] = useState(false)
   const [pushGranted, setPushGranted] = useState(true)
+  /** One-time tip dismissal keyed to queue_entry id (same session only). */
+  const [dismissedNextTips, setDismissedNextTips] = useState<Record<string, true>>({})
+
+  // Keep big-text view in sync when Simple mode is toggled from Accessibility.
+  useEffect(() => {
+    if (accessibility.simplifiedMode) setSimpleViewActive(true)
+  }, [accessibility.simplifiedMode])
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -50,7 +63,7 @@ export function MyQueueScreen() {
   // Show no-show notice if the user's last visit today ended as a no-show
   if (!activeQueue && wasMarkedNoShow && !noShowDismissed) {
     return (
-      <div className="min-h-screen bg-background flex flex-col pb-20">
+      <div className="min-h-screen bg-background flex flex-col" style={{ paddingBottom: ABOVE_BOTTOM_NAV }}>
         <header className="sticky top-0 z-40 bg-card border-b border-border px-4 py-4">
                   <h1 className="text-xl font-bold text-foreground">{t.myQueue}</h1>
         </header>
@@ -123,8 +136,11 @@ export function MyQueueScreen() {
     )
   }
 
-  const peopleAhead = activeQueue.position - 1
+  const peopleAhead = Math.max(activeQueue.position - 1, 0)
   const estimatedWait = activeQueue.estimatedWait
+  // Pre-call state: #1, still waiting — not Flow Bar's your-turn / serving urgency.
+  const aboutToBeCalled = isAboutToBeCalled(activeQueue)
+  const showNextTip = aboutToBeCalled && !dismissedNextTips[activeQueue.id]
 
   // Circular progress: how far the user has moved up the queue they joined
   const totalInQueue = Math.max(activeQueue.totalInQueue, activeQueue.position)
@@ -140,24 +156,85 @@ export function MyQueueScreen() {
         locationName={activeQueue.locationName}
         onLeave={leaveQueue}
         onSwitchToNormal={() => setSimpleViewActive(false)}
+        aboutToBeCalled={aboutToBeCalled}
+        showNextTip={showNextTip}
+        onDismissNextTip={() =>
+          setDismissedNextTips((prev) => ({ ...prev, [activeQueue.id]: true }))
+        }
+        reduceMotion={!!reduceMotion}
       />
     )
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div
+      className="min-h-screen bg-background"
+      style={{ paddingBottom: ABOVE_BOTTOM_NAV }}
+      data-testid="queue-status-screen"
+      data-about-to-be-called={aboutToBeCalled ? "true" : "false"}
+    >
       {/* Status Banner */}
-      <div className="bg-secondary/10 border-b border-secondary/20 px-4 py-4">
+      <div
+        className={cn(
+          "border-b px-4 py-4",
+          aboutToBeCalled
+            ? "bg-amber-100 border-amber-300"
+            : "bg-secondary/10 border-secondary/20"
+        )}
+        data-testid="queue-status-banner"
+      >
         <div className="flex items-center gap-3">
-          <div className="w-2.5 h-2.5 bg-secondary rounded-full animate-pulse" />
-          <p className="text-foreground font-semibold">
-            {t.youreInQueue} —{" "}
-            <span className="text-secondary">
-              {peopleAhead} {peopleAhead === 1 ? t.personAheadLabel : t.peopleAheadLabel}
-            </span>
+          <div
+            className={cn(
+              "h-2.5 w-2.5 shrink-0 rounded-full",
+              aboutToBeCalled ? "bg-amber-600" : "bg-secondary",
+              !reduceMotion && (aboutToBeCalled ? "flowbar-pulse" : "animate-pulse")
+            )}
+            aria-hidden
+          />
+          <p
+            className={cn(
+              "font-semibold",
+              aboutToBeCalled ? "text-amber-950" : "text-foreground"
+            )}
+          >
+            {aboutToBeCalled ? (
+              t.youreNext
+            ) : (
+              <>
+                {t.youreInQueue} —{" "}
+                <span className="text-secondary">
+                  {peopleAhead} {peopleAhead === 1 ? t.personAheadLabel : t.peopleAheadLabel}
+                </span>
+              </>
+            )}
           </p>
         </div>
       </div>
+
+      {showNextTip && (
+        <div
+          className="border-b border-amber-200 bg-amber-50 px-4 py-3"
+          data-testid="about-to-be-called-tip"
+          role="status"
+        >
+          <div className="flex items-start gap-2.5">
+            <p className="min-w-0 flex-1 text-sm leading-relaxed text-amber-950">
+              {t.aboutToBeCalledTip}
+            </p>
+            <button
+              type="button"
+              aria-label={t.dismissTip}
+              className="shrink-0 rounded-md p-1 text-amber-800 hover:bg-amber-100"
+              onClick={() =>
+                setDismissedNextTips((prev) => ({ ...prev, [activeQueue.id]: true }))
+              }
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {!pushGranted && (
         <div
@@ -175,8 +252,16 @@ export function MyQueueScreen() {
       <div className="px-4 py-6">
         {/* Large Position Number with Circular Progress */}
         <div className="flex flex-col items-center mb-8">
-          <div className="relative w-48 h-48 mb-4">
-            <svg className="w-full h-full transform -rotate-90">
+          <div
+            className={cn(
+              "relative mb-4 h-48 w-48",
+              aboutToBeCalled && !reduceMotion && "qflow-next-ring",
+              aboutToBeCalled && reduceMotion && "ring-4 ring-amber-400/50 rounded-full"
+            )}
+            data-testid="queue-place-ring"
+            data-pulse={aboutToBeCalled && !reduceMotion ? "true" : "false"}
+          >
+            <svg className="h-full w-full -rotate-90 transform">
               <circle
                 cx="96"
                 cy="96"
@@ -184,7 +269,7 @@ export function MyQueueScreen() {
                 stroke="currentColor"
                 strokeWidth="8"
                 fill="none"
-                className="text-muted"
+                className={aboutToBeCalled ? "text-amber-200" : "text-muted"}
               />
               <circle
                 cx="96"
@@ -194,44 +279,70 @@ export function MyQueueScreen() {
                 strokeWidth="8"
                 fill="none"
                 strokeLinecap="round"
-                className="transition-all duration-500 text-primary"
+                className={cn(
+                  "transition-all duration-500",
+                  aboutToBeCalled ? "text-amber-600" : "text-primary"
+                )}
                 style={{
                   strokeDasharray: circumference,
-                  strokeDashoffset: strokeDashoffset
+                  strokeDashoffset: strokeDashoffset,
                 }}
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{t.position}</p>
-              <p className={cn(
-                "font-bold text-foreground transition-all",
-                isLargeText ? "text-[96px]" : "text-6xl"
-              )}>
+              <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                {t.position}
+              </p>
+              <p
+                className={cn(
+                  "font-bold text-foreground transition-all",
+                  isLargeText ? "text-[96px]" : "text-6xl"
+                )}
+              >
                 #{activeQueue.position}
               </p>
             </div>
           </div>
 
           {/* Estimated Wait Card */}
-          <div className={cn(
-            "bg-card rounded-2xl border border-border shadow-sm p-4 w-full max-w-xs",
-            isLargeText && "p-6"
-          )}>
-            <p className={cn(
-              "text-muted-foreground uppercase tracking-wide mb-1",
-              isLargeText ? "text-sm" : "text-xs"
-            )}>
-                      {isLargeText ? t.waitLabel : t.estimatedWait}
+          <div
+            className={cn(
+              "w-full max-w-xs rounded-2xl border bg-card p-4 text-center shadow-sm",
+              aboutToBeCalled ? "border-amber-300" : "border-border",
+              isLargeText && "p-6"
+            )}
+          >
+            <p
+              className={cn(
+                "mb-1 uppercase tracking-wide text-muted-foreground",
+                isLargeText ? "text-sm" : "text-xs"
+              )}
+            >
+              {isLargeText ? t.waitLabel : t.estimatedWait}
             </p>
-            <p className="text-5xl font-bold text-primary mb-1">~{estimatedWait} min</p>
-            <p className="text-xs text-muted-foreground italic">
-              {isOffline ? "(paused — you're offline)" : "(updating live)"}
-            </p>
+            {aboutToBeCalled && estimatedWait <= 0 ? (
+              <p
+                className="mb-1 text-3xl font-bold text-amber-700"
+                data-testid="any-moment-now"
+              >
+                {t.anyMomentNow}
+              </p>
+            ) : (
+              <>
+                <p className="mb-1 text-5xl font-bold text-primary">~{estimatedWait} min</p>
+                <p className="text-xs italic text-muted-foreground">
+                  {isOffline ? "(paused — you're offline)" : "(updating live)"}
+                </p>
+              </>
+            )}
 
-            <div className="mt-4 pt-3 border-t border-border">
-              <p className="text-xs text-muted-foreground mb-2">Based on:</p>
-              <ul className={cn("text-foreground space-y-1", isLargeText ? "text-lg" : "text-sm")}>
-                <li>• {peopleAhead} {isLargeText ? "AHEAD OF YOU" : "people ahead of you"}</li>
+            <div className="mt-4 border-t border-border pt-3 text-left">
+              <p className="mb-2 text-xs text-muted-foreground">Based on:</p>
+              <ul className={cn("space-y-1 text-foreground", isLargeText ? "text-lg" : "text-sm")}>
+                <li>
+                  • {peopleAhead}{" "}
+                  {isLargeText ? "AHEAD OF YOU" : "people ahead of you"}
+                </li>
                 {!isLargeText && <li>• Avg service time: {AVG_SERVICE_MINUTES} min</li>}
                 {!isLargeText && <li>• {ACTIVE_STAFF} counters serving</li>}
               </ul>
@@ -243,12 +354,15 @@ export function MyQueueScreen() {
             <div className="mt-3 text-center">
               {lastSyncedAt && (
                 <p className="text-sm text-muted-foreground italic">
-                  <Clock className="w-4 h-4 inline mr-1" />
+                  <Clock className="mr-1 inline h-4 w-4" />
                   Last updated:{" "}
-                  {lastSyncedAt.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}
+                  {lastSyncedAt.toLocaleTimeString("en-ZA", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="mt-1 text-xs text-muted-foreground">
                 (Updates paused — you&apos;re offline)
               </p>
             </div>
@@ -295,7 +409,7 @@ export function MyQueueScreen() {
         )}
 
         {/* Red Outlined Leave Queue Button - Disabled when offline */}
-        <div className="relative">
+        <div className="relative mb-3">
           <Button 
             variant="outline"
             onClick={isOffline ? () => setShowOfflineTooltip(true) : leaveQueue}
@@ -328,7 +442,7 @@ export function MyQueueScreen() {
           type="button"
           onClick={() => setSimpleViewActive(true)}
           className={cn(
-            "w-full mt-3 text-base font-semibold rounded-xl",
+            "w-full text-base font-semibold rounded-xl",
             isLargeText ? "h-16 text-lg" : "h-14"
           )}
         >
@@ -341,37 +455,108 @@ export function MyQueueScreen() {
   )
 }
 
-// Simplified View Component - Part C
-function SimpleQueueView({ 
-  position, 
-  waitTime, 
-  locationName, 
-  onLeave, 
-  onSwitchToNormal 
-}: { 
+// Big-text / accessibility view — same aboutToBeCalled signal as the normal view.
+function SimpleQueueView({
+  position,
+  waitTime,
+  locationName,
+  onLeave,
+  onSwitchToNormal,
+  aboutToBeCalled = false,
+  showNextTip = false,
+  onDismissNextTip,
+  reduceMotion = false,
+}: {
   position: number
   waitTime: number
   locationName: string
   onLeave: () => void
   onSwitchToNormal: () => void
+  aboutToBeCalled?: boolean
+  showNextTip?: boolean
+  onDismissNextTip?: () => void
+  reduceMotion?: boolean
 }) {
   const t = useT()
   return (
-    <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center px-6">
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <p className="text-sm text-muted-foreground tracking-widest uppercase mb-4">{t.yourNumber}</p>
-        <p className="text-[96px] font-bold text-foreground leading-none mb-6">#{position}</p>
-        <p className="text-2xl font-bold text-foreground mb-4">
-          {t.waitLabel}: {waitTime} {t.minutes}
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex flex-col px-6",
+        aboutToBeCalled ? "bg-amber-50" : "bg-white"
+      )}
+      data-testid="queue-simple-view"
+      data-about-to-be-called={aboutToBeCalled ? "true" : "false"}
+    >
+      {showNextTip && (
+        <div
+          className="mt-4 rounded-2xl border border-amber-300 bg-amber-100 px-4 py-4"
+          data-testid="about-to-be-called-tip"
+          role="status"
+        >
+          <div className="flex items-start gap-3">
+            <p className="min-w-0 flex-1 text-lg font-medium leading-snug text-amber-950">
+              {t.aboutToBeCalledTip}
+            </p>
+            <button
+              type="button"
+              aria-label={t.dismissTip}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-amber-900 hover:bg-amber-200"
+              onClick={onDismissNextTip}
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-1 flex-col items-center justify-center">
+        <p
+          className={cn(
+            "mb-4 text-sm uppercase tracking-widest",
+            aboutToBeCalled ? "font-semibold text-amber-800" : "text-muted-foreground"
+          )}
+        >
+          {aboutToBeCalled ? t.youreNext : t.yourNumber}
         </p>
-        <p className="text-base text-muted-foreground">{locationName}</p>
+        <p
+          className={cn(
+            "mb-6 text-[96px] font-bold leading-none",
+            aboutToBeCalled ? "text-amber-900" : "text-foreground",
+            aboutToBeCalled && !reduceMotion && "qflow-next-ring",
+            aboutToBeCalled && reduceMotion && "rounded-lg ring-4 ring-amber-400/60"
+          )}
+          data-testid="queue-simple-number"
+          data-pulse={aboutToBeCalled && !reduceMotion ? "true" : "false"}
+        >
+          #{position}
+        </p>
+        {aboutToBeCalled ? (
+          <p
+            className="mb-4 text-3xl font-bold uppercase tracking-wide text-amber-800"
+            data-testid="any-moment-now"
+          >
+            {t.anyMomentNow}
+          </p>
+        ) : (
+          <p className="mb-4 text-2xl font-bold uppercase text-foreground">
+            {t.waitLabel}: {waitTime} {t.minutes}
+          </p>
+        )}
+        <p
+          className={cn(
+            "text-center text-base",
+            aboutToBeCalled ? "text-amber-900/80" : "text-muted-foreground"
+          )}
+        >
+          {locationName}
+        </p>
       </div>
 
-      <div className="w-full pb-8 space-y-3">
+      <div className="w-full space-y-3 pb-8">
         <Button
           type="button"
           onClick={onLeave}
-          className="w-full h-16 bg-foreground text-background text-xl font-semibold rounded-2xl hover:bg-foreground/90"
+          className="h-16 w-full rounded-2xl bg-foreground text-xl font-semibold text-background hover:bg-foreground/90"
         >
           {t.leaveQueue.toUpperCase()}
         </Button>
@@ -379,7 +564,10 @@ function SimpleQueueView({
           type="button"
           variant="outline"
           onClick={onSwitchToNormal}
-          className="w-full h-14 text-base font-semibold rounded-xl border-2"
+          className={cn(
+            "h-14 w-full rounded-xl border-2 text-base font-semibold",
+            aboutToBeCalled && "border-amber-400 bg-amber-100/80 text-amber-950 hover:bg-amber-100"
+          )}
         >
           {t.switchToNormalView}
         </Button>

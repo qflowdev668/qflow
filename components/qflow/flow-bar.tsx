@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { createPortal } from "react-dom"
 import {
   AnimatePresence,
   motion,
@@ -11,6 +12,19 @@ import { Bell, ChevronUp, MapPin } from "lucide-react"
 import { useApp } from "@/lib/app-context"
 import { RollerDigit } from "@/components/qflow/roller-digit"
 import { JoinQueuePanel } from "@/components/qflow/join-queue-panel"
+import { RouteSummaryCard } from "@/components/qflow/route-summary-card"
+import {
+  clearActiveRoute,
+  setActiveRoute,
+  useActiveRoute,
+} from "@/lib/active-route-store"
+import { detectUserLocation } from "@/lib/map-geolocation"
+import { fetchMapboxRoute, type TravelProfile } from "@/lib/mapbox-directions"
+import {
+  FLOW_BAR_BOTTOM_NO_NAV,
+  FLOW_BAR_BOTTOM_WITH_NAV,
+} from "@/lib/bottom-chrome"
+import { useHasBottomNav } from "@/hooks/use-chrome-insets"
 import { cn } from "@/lib/utils"
 
 const CHEVRON_SEEN_KEY = "qflow-flowbar-chevron-seen"
@@ -28,20 +42,34 @@ function isYourTurnStatus(status: string) {
  * Collapsed pill morphs into an expanded sheet via Framer Motion layoutId.
  */
 export function FlowBar() {
-  const { activeQueue, currentUser } = useApp()
+  const { activeQueue, currentUser, locations, currentScreen } = useApp()
+  const activeRoute = useActiveRoute()
   const reduceMotion = useReducedMotion()
+  const hasBottomNav = useHasBottomNav()
+  const [mounted, setMounted] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [chevronBounce, setChevronBounce] = useState(false)
   const [yourTurnPulse, setYourTurnPulse] = useState(false)
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [routeError, setRouteError] = useState<string | null>(null)
+  const [canOfferDirections, setCanOfferDirections] = useState(false)
   const prevStatusRef = useRef<string | null>(null)
   const expandedFullyRef = useRef(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const visible =
     Boolean(currentUser) &&
     Boolean(activeQueue) &&
     activeQueue !== null &&
-    ["waiting", "almost", "your-turn", "serving"].includes(activeQueue.status)
+    ["waiting", "almost", "your-turn", "serving"].includes(activeQueue.status) &&
+    // Intentionally hidden on /queue (My line): that page is already the full
+    // detail view — showing the Flow Bar pill there is redundant and collided
+    // with the tab bar. Do not "restore" it here without revisiting layout.
+    currentScreen !== "my-queue"
 
   useEffect(() => {
     if (!visible) setExpanded(false)
@@ -116,6 +144,67 @@ export function FlowBar() {
 
   useEffect(() => {
     if (!expanded) return
+    let cancelled = false
+    void detectUserLocation().then((result) => {
+      if (!cancelled) setCanOfferDirections(result.ok)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [expanded])
+
+  const queueLocation = activeQueue
+    ? locations.find((loc) => loc.id === activeQueue.locationId)
+    : null
+
+  const routeForThisQueue =
+    activeRoute &&
+    activeQueue &&
+    (activeRoute.queueEntryId === activeQueue.id ||
+      activeRoute.locationId === activeQueue.locationId)
+      ? activeRoute
+      : null
+
+  const requestDirections = useCallback(
+    async (profile: TravelProfile = "walking") => {
+      if (!activeQueue || !queueLocation) return
+      setRouteLoading(true)
+      setRouteError(null)
+      const geo = await detectUserLocation()
+      if (!geo.ok) {
+        setRouteLoading(false)
+        setRouteError("Enable location to get directions.")
+        setCanOfferDirections(false)
+        return
+      }
+      setCanOfferDirections(true)
+
+      if (activeRoute && activeRoute.locationId !== queueLocation.id) {
+        clearActiveRoute()
+      }
+
+      const result = await fetchMapboxRoute(
+        geo.coords,
+        queueLocation.coordinates,
+        profile
+      )
+      setRouteLoading(false)
+      if (!result.ok) {
+        setRouteError(result.error)
+        return
+      }
+      setActiveRoute({
+        queueEntryId: activeQueue.id,
+        locationId: queueLocation.id,
+        locationCoords: queueLocation.coordinates,
+        route: result.route,
+      })
+    },
+    [activeQueue, queueLocation, activeRoute]
+  )
+
+  useEffect(() => {
+    if (!expanded) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") collapse()
     }
@@ -139,7 +228,7 @@ export function FlowBar() {
   const isCustomer =
     !currentUser || currentUser.role === "user"
 
-  if (!visible || !activeQueue || !isCustomer) return null
+  if (!mounted || !visible || !activeQueue || !isCustomer) return null
 
   const priority = activeQueue.priorityType ?? "standard"
   const isYourTurn = isYourTurnStatus(activeQueue.status)
@@ -152,14 +241,14 @@ export function FlowBar() {
         ? "ring-2 ring-[#F59E0B]/80 shadow-[0_0_16px_rgba(245,158,11,0.4)]"
         : ""
 
-  return (
+  const chrome = (
     <>
       <AnimatePresence>
         {expanded && (
           <motion.button
             type="button"
             aria-label="Close queue details"
-            className="fixed inset-0 z-[45] bg-black max-w-md mx-auto"
+            className="fixed inset-0 z-[65] mx-auto max-w-md bg-black"
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.15 }}
             exit={{ opacity: 0 }}
@@ -174,14 +263,34 @@ export function FlowBar() {
       </AnimatePresence>
 
       <div
+        data-testid="flow-bar-chrome"
         className={cn(
-          "fixed left-0 right-0 z-[46] pointer-events-none max-w-md mx-auto",
-          expanded ? "bottom-0 top-0 flex flex-col justify-end" : "bottom-[calc(72px+8px)] px-4"
+          "pointer-events-none fixed left-1/2 z-[66] w-full max-w-md -translate-x-1/2 px-4",
+          expanded && "top-0 flex flex-col justify-end"
         )}
+        style={{
+          // Clear BottomNav when it is mounted; otherwise sit just above the
+          // safe area so profile/help Save CTAs can stack above the pill.
+          bottom: hasBottomNav ? FLOW_BAR_BOTTOM_WITH_NAV : FLOW_BAR_BOTTOM_NO_NAV,
+        }}
       >
         <AnimatePresence mode="wait">
           {!expanded ? (
-            <motion.div
+            <div className="pointer-events-auto flex w-full flex-col gap-2">
+              {routeForThisQueue && (
+                <RouteSummaryCard
+                  route={routeForThisQueue.route}
+                  destination={routeForThisQueue.locationCoords}
+                  travelProfile={routeForThisQueue.route.profile}
+                  loading={routeLoading}
+                  error={routeError}
+                  compact
+                  onRetry={() => void requestDirections(routeForThisQueue.route.profile)}
+                  onProfileChange={(profile) => void requestDirections(profile)}
+                  className="shadow-md"
+                />
+              )}
+              <motion.div
               key="collapsed"
               layoutId={LAYOUT_ID}
               role="button"
@@ -199,7 +308,7 @@ export function FlowBar() {
                     : "standard"
               }
               className={cn(
-                "pointer-events-auto h-[60px] w-full rounded-2xl flex items-center gap-3 px-4 cursor-pointer",
+                "h-[60px] w-full rounded-2xl flex items-center gap-3 px-4 cursor-pointer",
                 "text-white border border-white/15",
                 "bg-[rgba(37,99,235,0.85)] backdrop-blur-[20px]",
                 priorityRing,
@@ -251,6 +360,7 @@ export function FlowBar() {
                 aria-hidden
               />
             </motion.div>
+            </div>
           ) : (
             <motion.div
               key="expanded"
@@ -298,11 +408,37 @@ export function FlowBar() {
                     It is your turn — please go to the counter
                   </p>
                 )}
+                {routeForThisQueue ? (
+                  <div className="mb-3">
+                    <RouteSummaryCard
+                      route={routeForThisQueue.route}
+                      destination={routeForThisQueue.locationCoords}
+                      travelProfile={routeForThisQueue.route.profile}
+                      loading={routeLoading}
+                      error={routeError}
+                      onRetry={() => void requestDirections(routeForThisQueue.route.profile)}
+                      onProfileChange={(profile) => void requestDirections(profile)}
+                      className="shadow-none"
+                    />
+                  </div>
+                ) : null}
                 <JoinQueuePanel
                   mode="active"
                   useRollerDigits
                   onLeft={collapse}
+                  showDirections={
+                    !routeForThisQueue && (canOfferDirections || Boolean(routeError))
+                  }
+                  onDirections={() => void requestDirections("walking")}
                 />
+                {routeLoading && !routeForThisQueue && (
+                  <p className="mt-2 text-sm text-muted-foreground">Calculating directions…</p>
+                )}
+                {routeError && !routeForThisQueue && (
+                  <p className="mt-2 text-sm text-destructive" role="alert">
+                    {routeError}
+                  </p>
+                )}
               </motion.div>
             </motion.div>
           )}
@@ -310,4 +446,6 @@ export function FlowBar() {
       </div>
     </>
   )
+
+  return createPortal(chrome, document.body)
 }

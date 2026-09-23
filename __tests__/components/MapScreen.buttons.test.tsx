@@ -7,6 +7,11 @@ import { MapScreen } from "@/components/qflow/screens/map-screen"
 const mockNavigateTo = jest.fn()
 const mockSetSelectedLocation = jest.fn()
 
+jest.mock("@/lib/map-geolocation", () => ({
+  detectUserLocation: jest.fn().mockResolvedValue({ ok: false, reason: "denied" }),
+  locationBannerMessage: () => "Location is blocked.",
+}))
+
 jest.mock("@/lib/app-context", () => ({
   useApp: () => ({
     locations: [
@@ -91,6 +96,30 @@ jest.mock("@/components/qflow/join-queue-drawer", () => ({
     open ? <div data-testid="join-drawer">join-drawer</div> : null,
 }))
 
+jest.mock("@/components/qflow/qflow-map", () => ({
+  QflowMap: ({
+    onSelectLocation,
+    locations,
+  }: {
+    onSelectLocation: (loc: { id: string }) => void
+    locations: { id: string; name: string }[]
+  }) => (
+    <div data-testid="qflow-map-canvas">
+      {locations.map((loc) => (
+        <button
+          key={loc.id}
+          type="button"
+          data-testid={`map-pin-${loc.id}`}
+          className="cursor-pointer"
+          onClick={() => onSelectLocation(loc as never)}
+        >
+          pin
+        </button>
+      ))}
+    </div>
+  ),
+}))
+
 describe("MapScreen button wiring", () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -104,10 +133,8 @@ describe("MapScreen button wiring", () => {
   })
 
   it("opens join drawer when a map pin is selected", () => {
-    const { container } = render(<MapScreen />)
-    const pin = container.querySelector("g.cursor-pointer")
-    expect(pin).toBeTruthy()
-    fireEvent.click(pin!)
+    render(<MapScreen />)
+    fireEvent.click(screen.getByTestId("map-pin-loc-1"))
     expect(mockSetSelectedLocation).toHaveBeenCalled()
     expect(screen.getByTestId("join-drawer")).toBeTruthy()
     expect(mockNavigateTo).not.toHaveBeenCalled()

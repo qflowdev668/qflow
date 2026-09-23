@@ -76,6 +76,11 @@ export type TranslationKeys = {
   nearby: string
   allLocations: string
   searchLocations: string
+  noMatchingLocations: string
+  youreNext: string
+  anyMomentNow: string
+  aboutToBeCalledTip: string
+  dismissTip: string
   noLocationsFound: string
 
   myQueue: string
@@ -618,6 +623,12 @@ export type TranslationKeys = {
   profileSaved: string
   profileNameTooShort: string
   emailLockedHint: string
+  changePhoto: string
+  removePhoto: string
+  avatarTooLarge: string
+  avatarInvalidType: string
+  avatarUploadFailed: string
+  avatarUpdated: string
   notifications: string
   session: string
   activeExpires: string
@@ -829,6 +840,11 @@ const en = {
   nearby: "Near you",
   allLocations: "All places",
   searchLocations: "Search...",
+  noMatchingLocations: "No matching locations",
+  youreNext: "You're next!",
+  anyMomentNow: "Any moment now",
+  aboutToBeCalledTip: "Make your way to the counter now - you'll get an alert the moment it's your turn.",
+  dismissTip: "Dismiss",
   noLocationsFound: "No places found",
 
   myQueue: "My line",
@@ -1018,6 +1034,11 @@ const af = {
   nearby: "Naby jou",
   allLocations: "Alle plekke",
   searchLocations: "Soek...",
+  noMatchingLocations: "Geen ooreenstemmende plekke",
+  youreNext: "Jy is volgende!",
+  anyMomentNow: "Enige oomblik",
+  aboutToBeCalledTip: "Beweeg nou na die toonbank - jy kry kennisgewing as dit jou beurt is.",
+  dismissTip: "Maak toe",
   noLocationsFound: "Geen plekke gevind nie",
 
   myQueue: "My ry",
@@ -1207,6 +1228,11 @@ const zu = {
   nearby: "Eduze kwakho",
   allLocations: "Zonke izindawo",
   searchLocations: "Sesha...",
+  noMatchingLocations: "Azikho izindawo ezifanayo",
+  youreNext: "Ungulandelayo!",
+  anyMomentNow: "Noma yimuphi umzuzu",
+  aboutToBeCalledTip: "Hamba uyekota manje - uzothola isaziso ngesikhathi sakho.",
+  dismissTip: "Vala",
   noLocationsFound: "Azikho izindawo",
 
   myQueue: "Umgca wami",
@@ -1396,6 +1422,11 @@ const st = {
   nearby: "Haufi le uena",
   allLocations: "Libaka tsohle",
   searchLocations: "Batla...",
+  noMatchingLocations: "Ga go na mafelo a a tshwanang",
+  youreNext: "O latela!",
+  anyMomentNow: "Nakong efe kapa efe",
+  aboutToBeCalledTip: "Eya kountering hangkalo - o tla amogela kitsiso hang ha e le nako ya gago.",
+  dismissTip: "Tswala",
   noLocationsFound: "Ha ho libaka",
 
   myQueue: "Molango oa ka",
@@ -1585,6 +1616,11 @@ const xh = {
   nearby: "Kufutshane nawe",
   allLocations: "Zonke iindawo",
   searchLocations: "Khangela...",
+  noMatchingLocations: "Akukho ndawo zihambelanayo",
+  youreNext: "Ungulandelayo!",
+  anyMomentNow: "Nawuphi na umzuzu",
+  aboutToBeCalledTip: "Yiya kwikhawuntara ngoku - uya kufumana isaziso xa kuyithuba lakho.",
+  dismissTip: "Vala",
   noLocationsFound: "Azikho iindawo",
 
   myQueue: "Umgca wam",
@@ -1774,6 +1810,11 @@ const tn = {
   nearby: "Gaufi le wena",
   allLocations: "Mafelo otlhe",
   searchLocations: "Batla...",
+  noMatchingLocations: "Ga go na mafelo a a tshwanang",
+  youreNext: "O latela!",
+  anyMomentNow: "Nakong efe kapa efe",
+  aboutToBeCalledTip: "Eya kountering hangkalo - o tla amogela kitsiso hang ha e le nako ya gago.",
+  dismissTip: "Tswala",
   noLocationsFound: "Ga go na mafelo",
 
   myQueue: "Mola wa me",

@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useApp, TextSize, ButtonSize } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
+import { useChromeInsets } from "@/hooks/use-chrome-insets"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -10,18 +11,18 @@ import { cn } from "@/lib/utils"
 export function AccessibilitySettingsScreen() {
   const { accessibility, setAccessibility, navigateTo } = useApp()
   const t = useT()
-  
+
   const textSizeOptions: { value: TextSize; label: string }[] = [
     { value: "small", label: t.sizeSmall },
     { value: "normal", label: t.sizeNormal },
     { value: "large", label: t.sizeLarge },
-    { value: "x-large", label: t.sizeXLarge }
+    { value: "x-large", label: t.sizeXLarge },
   ]
 
   const buttonSizeOptions: { value: ButtonSize; label: string }[] = [
     { value: "normal", label: t.sizeNormal },
     { value: "large", label: t.sizeLarge },
-    { value: "x-large", label: t.sizeExtraLarge }
+    { value: "x-large", label: t.sizeExtraLarge },
   ]
 
   const [textSize, setTextSize] = useState<TextSize>(accessibility.textSize)
@@ -30,14 +31,18 @@ export function AccessibilitySettingsScreen() {
   const [buttonSize, setButtonSize] = useState<ButtonSize>(accessibility.buttonSize)
   const [showSavedToast, setShowSavedToast] = useState(false)
 
-  const textSizeIndex = textSizeOptions.findIndex(opt => opt.value === textSize)
+  const textSizeIndex = textSizeOptions.findIndex((opt) => opt.value === textSize)
 
   const getPreviewTextSize = () => {
     switch (textSize) {
-      case "small": return "text-sm"
-      case "normal": return "text-base"
-      case "large": return "text-xl"
-      case "x-large": return "text-2xl"
+      case "small":
+        return "text-sm"
+      case "normal":
+        return "text-base"
+      case "large":
+        return "text-xl"
+      case "x-large":
+        return "text-2xl"
     }
   }
 
@@ -46,7 +51,7 @@ export function AccessibilitySettingsScreen() {
       textSize,
       highContrast,
       simplifiedMode,
-      buttonSize
+      buttonSize,
     })
     setShowSavedToast(true)
     setTimeout(() => {
@@ -55,49 +60,63 @@ export function AccessibilitySettingsScreen() {
     }, 1500)
   }
 
+  const { paddingBottom, fixedFooterBottom } = useChromeInsets({
+    fixedSaveFooter: true,
+  })
+
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div
+      className="min-h-screen bg-background"
+      style={{ paddingBottom }}
+      data-testid="accessibility-settings"
+    >
       <TopBar title={t.accessibility} showBack onBack={() => navigateTo("profile")} />
 
-      <div className="px-4 py-6 space-y-8">
+      <div className="space-y-8 px-4 py-6">
         <div>
-          <h3 className="font-medium text-gray-800 mb-4">{t.textSize}</h3>
-          
+          <h3 className="mb-4 font-medium text-foreground">{t.textSize}</h3>
+
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm text-gray-500">A</span>
-              <span className="text-xl text-gray-500">A</span>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">A</span>
+              <span className="text-xl text-muted-foreground">A</span>
             </div>
-            
-            <div className="relative h-2 bg-gray-200 rounded-full">
-              <div 
-                className="absolute h-full bg-primary rounded-full transition-all"
-                style={{ width: `${(textSizeIndex / (textSizeOptions.length - 1)) * 100}%` }}
+
+            <div className="relative h-2 rounded-full bg-muted">
+              <div
+                className="absolute h-full rounded-full bg-primary transition-all"
+                style={{
+                  width: `${(textSizeIndex / (textSizeOptions.length - 1)) * 100}%`,
+                }}
               />
               <div className="absolute inset-0 flex items-center justify-between px-0">
                 {textSizeOptions.map((option, index) => (
                   <button
                     key={option.value}
+                    type="button"
                     onClick={() => setTextSize(option.value)}
                     className={cn(
-                      "w-4 h-4 rounded-full border-2 transition-all z-10",
-                      index <= textSizeIndex 
-                        ? "bg-primary border-primary" 
-                        : "bg-white border-gray-300"
+                      "z-10 h-4 w-4 rounded-full border-2 transition-all",
+                      index <= textSizeIndex
+                        ? "border-primary bg-primary"
+                        : "border-border bg-background"
                     )}
                   />
                 ))}
               </div>
             </div>
-            
-            <div className="flex items-center justify-between mt-2">
+
+            <div className="mt-2 flex items-center justify-between">
               {textSizeOptions.map((option) => (
                 <button
                   key={option.value}
+                  type="button"
                   onClick={() => setTextSize(option.value)}
                   className={cn(
                     "text-xs transition-colors",
-                    textSize === option.value ? "text-primary font-medium" : "text-gray-500"
+                    textSize === option.value
+                      ? "font-medium text-primary"
+                      : "text-muted-foreground"
                   )}
                 >
                   {option.label}
@@ -106,96 +125,158 @@ export function AccessibilitySettingsScreen() {
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <p className={cn("text-foreground font-medium transition-all", getPreviewTextSize())}>
+          <div
+            className="rounded-xl bg-muted p-3 text-center"
+            data-testid="text-size-preview"
+          >
+            <p
+              className={cn(
+                "font-medium text-foreground transition-all",
+                getPreviewTextSize()
+              )}
+            >
               {t.previewPositionExample}
             </p>
           </div>
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-medium text-gray-800">{t.highContrastMode}</h3>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-medium text-foreground">{t.highContrastMode}</h3>
             <button
+              type="button"
+              aria-pressed={highContrast}
+              data-testid="high-contrast-toggle"
               onClick={() => setHighContrast(!highContrast)}
               className={cn(
-                "w-12 h-7 rounded-full transition-colors relative",
-                highContrast ? "bg-primary" : "bg-gray-300"
+                "relative h-7 w-12 rounded-full transition-colors",
+                highContrast ? "bg-primary" : "bg-muted"
               )}
             >
-              <span 
+              <span
                 className={cn(
-                  "absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all",
+                  "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all",
                   highContrast ? "left-[22px]" : "left-0.5"
                 )}
               />
             </button>
           </div>
-          <p className="text-sm text-gray-500">
-            {t.highContrastDesc}
-          </p>
+          <p className="mb-3 text-sm text-muted-foreground">{t.highContrastDesc}</p>
+          <div
+            className={cn(
+              "rounded-xl border p-3 text-center transition-colors",
+              highContrast
+                ? "border-white bg-black text-white"
+                : "border-border bg-muted text-foreground"
+            )}
+            data-testid="high-contrast-preview"
+          >
+            <p className="text-sm font-semibold">{t.previewPositionExample}</p>
+            <p className="mt-1 text-xs opacity-80">{t.highContrastDesc}</p>
+          </div>
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-medium text-gray-800">{t.simplifiedMode}</h3>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="font-medium text-foreground">{t.simplifiedMode}</h3>
             <button
+              type="button"
+              aria-pressed={simplifiedMode}
+              data-testid="simple-mode-toggle"
               onClick={() => setSimplifiedMode(!simplifiedMode)}
               className={cn(
-                "w-12 h-7 rounded-full transition-colors relative",
-                simplifiedMode ? "bg-primary" : "bg-gray-300"
+                "relative h-7 w-12 rounded-full transition-colors",
+                simplifiedMode ? "bg-primary" : "bg-muted"
               )}
             >
-              <span 
+              <span
                 className={cn(
-                  "absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all",
+                  "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all",
                   simplifiedMode ? "left-[22px]" : "left-0.5"
                 )}
               />
             </button>
           </div>
-          <p className="text-sm text-gray-500">
-            {t.simplifiedModeDesc}
-          </p>
+          <p className="mb-3 text-sm text-muted-foreground">{t.simplifiedModeDesc}</p>
+          <div
+            className="rounded-xl border border-border bg-card p-4 text-center"
+            data-testid="simple-mode-preview"
+          >
+            {simplifiedMode ? (
+              <>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                  {t.yourNumber}
+                </p>
+                <p className="my-2 text-5xl font-bold text-foreground">#5</p>
+                <p className="text-lg font-semibold text-foreground">
+                  {t.waitLabel}: 12 {t.minutes}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t.simplifiedModeDesc}</p>
+            )}
+          </div>
         </div>
 
         <div>
-          <h3 className="font-medium text-gray-800 mb-4">{t.buttonSize}</h3>
-          <div className="flex gap-3">
+          <h3 className="mb-4 font-medium text-foreground">{t.buttonSize}</h3>
+          <div className="mb-3 flex gap-3">
             {buttonSizeOptions.map((option) => (
               <label
                 key={option.value}
-                className="flex items-center gap-2 cursor-pointer"
+                className="flex cursor-pointer items-center gap-2"
               >
-                <div 
+                <div
                   className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                    buttonSize === option.value ? "border-primary" : "border-gray-300"
+                    "flex h-5 w-5 items-center justify-center rounded-full border-2",
+                    buttonSize === option.value ? "border-primary" : "border-border"
                   )}
                   onClick={() => setButtonSize(option.value)}
                 >
                   {buttonSize === option.value && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-primary" />
                   )}
                 </div>
                 <span className="text-sm text-foreground">{option.label}</span>
               </label>
             ))}
           </div>
+          <div data-testid="button-size-preview">
+            <Button
+              type="button"
+              className={cn(
+                "w-full font-semibold",
+                buttonSize === "large" && "h-12 text-base",
+                buttonSize === "x-large" && "h-14 text-lg",
+                buttonSize === "normal" && "h-10 text-sm"
+              )}
+            >
+              {t.joinQueue}
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border">
-        <Button 
+      <div
+        className="fixed left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-border bg-background p-4"
+        style={{ bottom: fixedFooterBottom }}
+        data-testid="fixed-save-footer"
+      >
+        <Button
+          type="button"
           onClick={handleSave}
-          className="w-full h-[52px] text-base font-semibold"
+          className="h-[52px] w-full text-base font-semibold"
         >
           {t.saveAccessibilitySettings}
         </Button>
       </div>
 
       {showSavedToast && (
-        <div className="fixed bottom-20 left-4 right-4 bg-card border border-border rounded-xl p-4 shadow-lg z-50 animate-in slide-in-from-bottom">
+        <div
+          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl border border-border bg-card p-4 shadow-lg animate-in slide-in-from-bottom"
+          style={{ bottom: paddingBottom }}
+          data-testid="a11y-saved-toast"
+        >
           <p className="text-center text-foreground">{t.settingsSaved}</p>
         </div>
       )}

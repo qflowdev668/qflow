@@ -48,6 +48,19 @@ import {
   readLastRoute,
   screenFromPath,
 } from "@/lib/routes"
+import {
+  applyAccessibilityDom,
+  DEFAULT_ACCESSIBILITY,
+  loadAccessibilitySettings,
+  saveAccessibilitySettings,
+} from "@/lib/accessibility-prefs"
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  loadNotificationPreferences,
+  parseNotificationPreferences,
+  saveNotificationPreferences,
+  type NotificationPreferences,
+} from "@/lib/notification-prefs"
 import { validateStrongPassword } from "@/lib/password"
 import { dispatchQueuePush } from "@/lib/push-client"
 import { formatSANumber } from "@/lib/sms-format"
@@ -274,6 +287,7 @@ interface AppContextType {
       name?: string
       cellNumber?: string | null
       smsNotifications?: boolean
+      avatarUrl?: string | null
     }
   ) => Promise<boolean>
 
@@ -293,6 +307,10 @@ interface AppContextType {
   // Accessibility
   accessibility: AccessibilitySettings
   setAccessibility: (settings: AccessibilitySettings) => void
+
+  // Alert preferences (/profile/notifications)
+  notificationPreferences: NotificationPreferences
+  setNotificationPreferences: (prefs: NotificationPreferences) => Promise<boolean>
 
   // Session (mirrors the Supabase access token, not a separate timer)
   sessionExpiresAt: Date | null
@@ -384,12 +402,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [staffQueueSyncError, setStaffQueueSyncError] = useState<string | null>(null)
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null)
   const [language, setLanguageState] = useState<Language>("en")
-  const [accessibility, setAccessibility] = useState<AccessibilitySettings>({
-    textSize: "normal",
-    highContrast: false,
-    simplifiedMode: false,
-    buttonSize: "normal",
-  })
+  const [accessibility, setAccessibilityState] =
+    useState<AccessibilitySettings>(DEFAULT_ACCESSIBILITY)
+  const [notificationPreferences, setNotificationPreferencesState] =
+    useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFS)
 
   // Demo preview users have no Supabase session, so data writes are skipped for them
   const isDemoUser = useRef(false)
@@ -523,13 +539,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (userId: string, fallbackEmail: string, fallbackName?: string) => {
       if (!supabase) return null
 
-      const { data } = await supabase
+      let { data } = await supabase
         .from("profiles")
         .select(
-          "id, name, email, role, location_id, avatar_url, language, cell_number, sms_notifications"
+          "id, name, email, role, location_id, avatar_url, language, cell_number, sms_notifications, notification_preferences"
         )
         .eq("id", userId)
         .maybeSingle()
+
+      // Column may not exist until migration 20260923210000 is applied.
+      if (!data) {
+        const fallback = await supabase
+          .from("profiles")
+          .select(
+            "id, name, email, role, location_id, avatar_url, language, cell_number, sms_notifications"
+          )
+          .eq("id", userId)
+          .maybeSingle()
+        data = fallback.data as typeof data
+      }
 
       const profile: User = {
         id: userId,
@@ -540,6 +568,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         locationId: data?.location_id ?? null,
         cellNumber: data?.cell_number ?? null,
         smsNotifications: data?.sms_notifications === true,
+      }
+
+      const prefsRaw =
+        data && "notification_preferences" in data
+          ? (data as { notification_preferences?: unknown }).notification_preferences
+          : undefined
+      if (prefsRaw) {
+        const prefs = parseNotificationPreferences(prefsRaw)
+        setNotificationPreferencesState(prefs)
+        saveNotificationPreferences(prefs)
       }
 
       if (data?.language) {
@@ -816,7 +854,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (window.localStorage.getItem("qflow_onboarding_done") === "1") {
       setHasCompletedOnboarding(true)
     }
+    const a11y = loadAccessibilitySettings()
+    setAccessibilityState(a11y)
+    applyAccessibilityDom(a11y)
+    setNotificationPreferencesState(loadNotificationPreferences())
   }, [])
+
+  const setAccessibility = useCallback((settings: AccessibilitySettings) => {
+    setAccessibilityState(settings)
+    saveAccessibilitySettings(settings)
+    applyAccessibilityDom(settings)
+  }, [])
+
+  const setNotificationPreferences = useCallback(
+    async (prefs: NotificationPreferences): Promise<boolean> => {
+      setNotificationPreferencesState(prefs)
+      saveNotificationPreferences(prefs)
+      if (!supabase || !currentUser || isDemoUser.current) return true
+      const { error } = await supabase
+        .from("profiles")
+        .update({ notification_preferences: prefs })
+        .eq("id", currentUser.id)
+      // Local persist always wins; cloud sync may fail until migration is applied.
+      if (error) {
+        console.warn("[qflow] notification_preferences sync:", error.message)
+      }
+      return true
+    },
+    [supabase, currentUser]
+  )
 
   // Surface OAuth errors from /auth/callback
   useEffect(() => {
@@ -2489,6 +2555,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name?: string
       cellNumber?: string | null
       smsNotifications?: boolean
+      avatarUrl?: string | null
     }): Promise<boolean> => {
       if (!currentUser) return false
 
@@ -2496,6 +2563,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         name?: string
         cell_number?: string | null
         sms_notifications?: boolean
+        avatar_url?: string | null
       } = {}
 
       if (updates.name !== undefined) {
@@ -2521,6 +2589,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         patch.sms_notifications = updates.smsNotifications
       }
 
+      if (updates.avatarUrl !== undefined) {
+        patch.avatar_url = updates.avatarUrl
+      }
+
       if (Object.keys(patch).length === 0) return false
 
       if (!supabase || isDemoUser.current) {
@@ -2532,6 +2604,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             : {}),
           ...(patch.sms_notifications !== undefined
             ? { smsNotifications: patch.sms_notifications }
+            : {}),
+          ...(patch.avatar_url !== undefined
+            ? { avatar: patch.avatar_url ?? undefined }
             : {}),
         })
         return true
@@ -2559,6 +2634,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : {}),
         ...(patch.sms_notifications !== undefined
           ? { smsNotifications: patch.sms_notifications }
+          : {}),
+        ...(patch.avatar_url !== undefined
+          ? { avatar: patch.avatar_url ?? undefined }
           : {}),
       })
       return true
@@ -2662,6 +2740,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLanguage,
       accessibility,
       setAccessibility,
+      notificationPreferences,
+      setNotificationPreferences,
       sessionExpiresAt,
       refreshSession
     }}>

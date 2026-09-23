@@ -105,6 +105,7 @@ Internal runbook: [STAFF_ONBOARDING.md](./STAFF_ONBOARDING.md).
 - **POPIA**: download my data + delete account (anonymises queue tickets for stats)
 - Languages: English, Afrikaans, Zulu, Sesotho, Xhosa, Setswana
 - Accessibility settings (including **Show big text** on My line), session expiry banner (FastAPI `X-Session-Expires-In` + client countdown), offline / outage banners
+- **Map** (`/map`) — Mapbox GL with capacity-colored pins (reuses `getMapPinCapacityInfo`); tap opens the same Join queue drawer as Home
 
 ### Platform
 - Static export with placeholder dynamic routes (`/location/_/?id=…`, `/display/_/?id=…`); FastAPI rewrites legacy `/location/{uuid}` URLs
@@ -167,6 +168,7 @@ Copy from `.env.local.example`. Never commit `.env.local`.
 | `VAPID_PRIVATE_KEY` | Push | Web Push private key (FastAPI `pywebpush` sender) |
 | `VAPID_SUBJECT` | Push | `mailto:` contact for VAPID |
 | `PUSH_DISPATCH_SECRET` | Push webhook | Bearer for DB/Edge → `/api/push/dispatch` (staff JWT also allowed) |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Map | Mapbox public access token for the `/map` view (free tier, no billing card required) |
 | `NEXT_PUBLIC_APP_URL` | Production | Canonical app URL (`https://useqflow.app`) |
 | `ALLOWED_ORIGINS` | Production | Comma-separated CORS origins for FastAPI (e.g. `https://useqflow.app`) |
 | `NEXT_PUBLIC_API_URL` | Optional | Leave empty when UI and API share one host |
@@ -654,6 +656,21 @@ eslint.config.mjs
 | Upstash | Optional; set for multi-instance OTP limits |
 | Uptime | UptimeRobot (external) — see below |
 | Backups | Pro + PITR + weekly `npm run db:backup` |
+
+### Render deployment checklist
+
+Set these in **Render → qflow → Environment** (and keep `render.yaml` `sync: false` keys in sync when adding new ones):
+
+| Variable | Notes |
+|----------|--------|
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase keys (baked into static export at build) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only |
+| `RESEND_*` / `ADMIN_OTP_*` | Staff/admin OTP email |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` / `PUSH_DISPATCH_SECRET` | Web Push |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox public token for `/map` — must be present at **`npm run build:web`** time (static export) |
+| `NEXT_PUBLIC_APP_URL` / `ALLOWED_ORIGINS` | `https://useqflow.app` |
+
+After changing any `NEXT_PUBLIC_*` value, **redeploy** so the static UI rebuilds with the new bake-time env.
 
 ---
 

@@ -40,3 +40,6 @@ backend/.coverage
 backend/coverage.xml
 *.pyc
 
+.cursor/
+.env.local.bak*
+

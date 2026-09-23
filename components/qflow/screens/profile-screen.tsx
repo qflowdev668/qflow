@@ -5,6 +5,7 @@ import { useApp } from "@/lib/app-context"
 import { apiFetch } from "@/lib/api-client"
 import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
+import { UserAvatar } from "@/components/qflow/user-avatar"
 import { useSession } from "@/components/qflow/session-expiry-banner"
 import { MenuRow } from "@/components/qflow/user-screen-layout"
 import { WelcomeHomeScene } from "@/components/qflow/illustrations/queue-scenes"
@@ -163,21 +164,21 @@ export function ProfileScreen() {
       <header className="px-4 pt-8 pb-4">
         <h1 className="text-2xl font-bold text-foreground mb-5">{t.navProfile}</h1>
 
-        <div className="flex items-center gap-4 mb-5">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center shrink-0 border-2 border-primary/20">
-            <span className="text-xl font-bold text-primary">
-              {currentUser?.name
-                ?.split(" ")
-                .map((n) => n[0])
-                .join("")
-                .toUpperCase() || <User className="w-7 h-7 text-primary" />}
-            </span>
-          </div>
+        <div className="mb-5 flex items-center gap-4">
+          <UserAvatar
+            name={currentUser?.name}
+            avatarUrl={currentUser?.avatar}
+            size="lg"
+          />
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-bold text-foreground truncate">{currentUser?.name ?? t.yourProfile}</h2>
-            <p className="text-sm text-muted-foreground truncate">{currentUser?.email ?? ""}</p>
-            <span className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-success">
-              <span className="w-2 h-2 rounded-full bg-success" />
+            <h2 className="truncate text-lg font-bold text-foreground">
+              {currentUser?.name ?? t.yourProfile}
+            </h2>
+            <p className="truncate text-sm text-muted-foreground">
+              {currentUser?.email ?? ""}
+            </p>
+            <span className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-success">
+              <span className="h-2 w-2 rounded-full bg-success" />
               {currentUser?.role || "user"}
             </span>
           </div>

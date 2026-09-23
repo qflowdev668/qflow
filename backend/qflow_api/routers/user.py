@@ -1,16 +1,21 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+import httpx
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from qflow_api.auth import get_current_user
+from qflow_api.storage_admin import public_object_url, storage_remove, storage_upload_bytes
 from qflow_api.supabase_admin import rest_get, rest_get_one, rest_insert, rest_patch
 from qflow_api.user_cleanup import purge_user_account
 
 router = APIRouter(tags=["user"])
 
 VISIT_RATING_WINDOW_SECONDS = 2 * 60 * 60
+AVATAR_BUCKET = "avatars"
+AVATAR_MAX_BYTES = 5 * 1024 * 1024
+ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp", "image/jpg"}
 
 
 def _assert_within_rating_window(served_at: str | None) -> None:
@@ -100,6 +105,54 @@ async def export_data(user: dict[str, Any] = Depends(get_current_user)) -> dict[
         "pushSubscriptionCount": len(push),
         "queueEntries": queue,
     }
+
+
+@router.post("/api/user/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Upload profile photo via service role (works before Storage RLS is applied)."""
+    user_id = user["id"]
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type == "image/jpg":
+        content_type = "image/jpeg"
+    if content_type not in ALLOWED_AVATAR_TYPES:
+        raise HTTPException(status_code=400, detail="Please choose a JPEG, PNG, or WebP image.")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    if len(data) > AVATAR_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Photo must be under 5 MB.")
+
+    object_path = f"{user_id}.jpg"
+    await storage_upload_bytes(
+        bucket=AVATAR_BUCKET,
+        path=object_path,
+        data=data,
+        content_type=content_type if content_type != "image/jpg" else "image/jpeg",
+        upsert=True,
+    )
+
+    public_url = (
+        f"{public_object_url(AVATAR_BUCKET, object_path)}"
+        f"?t={int(datetime.now(timezone.utc).timestamp())}"
+    )
+    await rest_patch("profiles", {"id": f"eq.{user_id}"}, {"avatar_url": public_url})
+    return {"ok": True, "avatarUrl": public_url}
+
+
+@router.delete("/api/user/avatar")
+async def delete_avatar(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    user_id = user["id"]
+    object_path = f"{user_id}.jpg"
+    try:
+        await storage_remove(AVATAR_BUCKET, [object_path])
+    except HTTPException:
+        pass
+    await rest_patch("profiles", {"id": f"eq.{user_id}"}, {"avatar_url": None})
+    return {"ok": True, "avatarUrl": None}
 
 
 @router.post("/api/push/subscribe")

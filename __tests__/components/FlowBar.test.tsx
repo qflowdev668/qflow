@@ -33,17 +33,31 @@ jest.mock("@/lib/app-context", () => ({
         email: "t@example.com",
         role: "user",
       },
+      currentScreen: "home",
       activeQueue,
       leaveQueue,
       clearAuthError: jest.fn(),
       authError: null,
       selectedLocation: sampleLocation,
+      locations: [sampleLocation],
       joinQueue: jest.fn(),
       navigateTo: jest.fn(),
     }),
 }))
 jest.mock("@/components/qflow/offline-banner", () => ({
   useOfflineStatus: () => false,
+}))
+jest.mock("@/lib/map-geolocation", () => ({
+  detectUserLocation: jest.fn(async () => ({
+    ok: true,
+    coords: { lat: -26.18, lng: 28.04, accuracyMeters: 25 },
+  })),
+}))
+jest.mock("@/lib/mapbox-directions", () => ({
+  fetchMapboxRoute: jest.fn(),
+  formatRouteDistance: (m: number) => `${m} m`,
+  formatRouteDuration: (s: number) => `${Math.round(s / 60)} min walk`,
+  googleMapsDirectionsUrl: () => "https://maps.example",
 }))
 jest.mock("framer-motion", () => {
   const React = require("react")
@@ -103,12 +117,17 @@ jest.mock("framer-motion", () => {
 })
 
 import { FlowBar } from "@/components/qflow/flow-bar"
+import {
+  __resetActiveRouteStoreForTests,
+  setActiveRoute,
+} from "@/lib/active-route-store"
 
 describe("FlowBar", () => {
   beforeEach(() => {
     activeQueue = null
     leaveQueue.mockClear()
     window.localStorage.clear()
+    __resetActiveRouteStoreForTests()
   })
 
   it("renders nothing with no active queue entry", () => {
@@ -138,6 +157,68 @@ describe("FlowBar", () => {
     await user.click(screen.getByLabelText(/close queue details/i))
     expect(await screen.findByTestId("flow-bar")).toBeInTheDocument()
     expect(screen.queryByTestId("flow-bar-expanded")).not.toBeInTheDocument()
+  })
+
+  it("shows Get directions in expanded state when no route is stored", async () => {
+    const user = userEvent.setup()
+    activeQueue = queueEntry()
+    render(<FlowBar />)
+    await user.click(screen.getByTestId("flow-bar"))
+    expect(await screen.findByTestId("directions-button")).toBeInTheDocument()
+    expect(screen.queryByTestId("route-summary-card")).not.toBeInTheDocument()
+  })
+
+  it("shows a compact route card above the pill when a route is active", async () => {
+    activeQueue = queueEntry()
+    setActiveRoute({
+      queueEntryId: "qe-1",
+      locationId: sampleLocation.id,
+      locationCoords: sampleLocation.coordinates,
+      route: {
+        distanceMeters: 1200,
+        durationSeconds: 900,
+        profile: "walking",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [28.04, -26.18],
+            [28.05, -26.19],
+          ],
+        },
+      },
+    })
+    render(<FlowBar />)
+    const card = screen.getByTestId("route-summary-card")
+    expect(card).toHaveAttribute("data-compact", "true")
+    expect(screen.getByTestId("flow-bar")).toBeInTheDocument()
+    expect(screen.getByText("1200 m")).toBeInTheDocument()
+  })
+
+  it("shows distance/ETA in expanded state when a route is active", async () => {
+    const user = userEvent.setup()
+    activeQueue = queueEntry()
+    setActiveRoute({
+      queueEntryId: "qe-1",
+      locationId: sampleLocation.id,
+      locationCoords: sampleLocation.coordinates,
+      route: {
+        distanceMeters: 1200,
+        durationSeconds: 900,
+        profile: "walking",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [28.04, -26.18],
+            [28.05, -26.19],
+          ],
+        },
+      },
+    })
+    render(<FlowBar />)
+    await user.click(screen.getByTestId("flow-bar"))
+    expect(await screen.findByTestId("route-summary-card")).toBeInTheDocument()
+    expect(screen.getByText("1200 m")).toBeInTheDocument()
+    expect(screen.queryByTestId("directions-button")).not.toBeInTheDocument()
   })
 
   it("applies emergency variant class", () => {

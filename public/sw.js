@@ -1,5 +1,5 @@
 /* QFlow service worker — offline shell cache + Web Push */
-const CACHE = "qflow-v2"
+const CACHE = "qflow-v6"
 const PRECACHE = ["/", "/manifest.json", "/icon-192x192.png", "/icon-512x512.png", "/apple-touch-icon.png"]
 
 self.addEventListener("install", (event) => {
