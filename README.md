@@ -2,8 +2,8 @@
 
 **Skip the line. Not the service.**
 
-[![Status](https://img.shields.io/badge/status-page-2563EB?style=flat&logo=statuspage&logoColor=white)](https://qflow.co.za/status)
-[![Uptime](https://img.shields.io/uptimerobot/status/REPLACE_WITH_MONITOR_API_KEY?label=uptime)](https://qflow.co.za/status)
+[![Status](https://img.shields.io/badge/status-page-2563EB?style=flat&logo=statuspage&logoColor=white)](https://useqflow.app/status)
+[![Uptime](https://img.shields.io/uptimerobot/status/REPLACE_WITH_MONITOR_API_KEY?label=uptime)](https://useqflow.app/status)
 
 > After creating monitors in UptimeRobot, replace `REPLACE_WITH_MONITOR_API_KEY` with the **monitor-specific API key** (Dashboard → My Monitors → monitor → API / Integrations). Format looks like `m778918918-3e92c097147760ee39d02d36`.
 
@@ -12,11 +12,11 @@ QFlow is a Progressive Web App for South African clinics, banks, and government 
 | | |
 |---|---|
 | **Repository** | [github.com/qflowdev668/qflow](https://github.com/qflowdev668/qflow) |
-| **Live status** | [qflow.co.za/status](https://qflow.co.za/status) · [API](https://qflow.co.za/api/status) |
+| **Live status** | [useqflow.app/status](https://useqflow.app/status) · [API](https://useqflow.app/api/status) |
 | **Counter display** | `/display/_/?id=<locationId>` (public kiosk / TV) |
 | **Stack** | FastAPI · Next.js 16 — build tool only, static export, no SSR/API routes · React 19 · TypeScript · Tailwind · Supabase · Resend · Web Push · Upstash |
 | **Package** | `qflow` (`package.json`) |
-| **Production** | [https://useqflow.app](https://useqflow.app) (once deployed) |
+| **Production** | [https://useqflow.app](https://useqflow.app) |
 | **Local** | `http://127.0.0.1:8000` |
 
 ### Architecture
@@ -670,8 +670,8 @@ See [Health & Status Endpoints](#health--status-endpoints) for what each URL act
 
    | Monitor | URL | Interval | Why |
    |---------|-----|----------|-----|
-   | Process health | `https://qflow.co.za/health` | Every 5 min | Fastest failure detection — lightest check (API process only) |
-   | Public status page | `https://qflow.co.za/status` | Every 5 min | What users/ops see in a browser |
+   | Process health | `https://useqflow.app/health` | Every 5 min | Fastest failure detection — lightest check (API process only) |
+   | Public status page | `https://useqflow.app/status` | Every 5 min | What users/ops see in a browser |
 
    **Do not also monitor `/api/status` by default** — it overlaps with `/status` (the page already loads that JSON). Add `/api/status` only if you want raw JSON alerting separate from the HTML page. Monitoring all three is usually redundant.
 
@@ -682,7 +682,7 @@ See [Health & Status Endpoints](#health--status-endpoints) for what each URL act
 5. Copy each monitor’s **monitor-specific API key** and paste it into the README badge at the top of this file.
 
 ```markdown
-[![Uptime](https://img.shields.io/uptimerobot/status/mXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXX?label=uptime)](https://qflow.co.za/status)
+[![Uptime](https://img.shields.io/uptimerobot/status/mXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXX?label=uptime)](https://useqflow.app/status)
 ```
 
 Expect `up` / `down` from Shields.io once the key is valid. Prefer the **status page** (`/status`) monitor key for the badge shown above.
