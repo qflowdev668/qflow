@@ -14,7 +14,7 @@ QFlow is a Progressive Web App for South African clinics, banks, and government 
 | **Repository** | [github.com/qflowdev668/qflow](https://github.com/qflowdev668/qflow) |
 | **Live status** | [useqflow.app/status](https://useqflow.app/status) · [API](https://useqflow.app/api/status) |
 | **Counter display** | `/display/_/?id=<locationId>` (public kiosk / TV) |
-| **Stack** | FastAPI · Next.js 16 — build tool only, static export, no SSR/API routes · React 19 · TypeScript · Tailwind · Supabase · Mapbox · Resend · Web Push · Upstash |
+| **Stack** | FastAPI · Next.js 16 — build tool only, static export, no SSR/API routes · React 19 · TypeScript · Tailwind · Supabase · Mapbox · Resend · Web Push · Cloudflare Workers AI · Upstash |
 | **Package** | `qflow` (`package.json`) |
 | **Production** | [https://useqflow.app](https://useqflow.app) |
 | **Local** | `http://127.0.0.1:8000` |
@@ -85,8 +85,9 @@ Internal runbook: [STAFF_ONBOARDING.md](./STAFF_ONBOARDING.md).
 ## Features
 
 ### Queues
-- **Join bottom sheet** — tap a location on Home/Map; a drawer slides up with wait time, optional priority, and **Join the line** (2 taps for standard join; 3 with priority)
+- **Join bottom sheet** — tap a location on Home or the Map. The sheet shows the service sticker, wait time, optional priority, and **Join the line** (2 taps for a standard join; 3 with priority). A compact **Ask QFlow** pill sits under the actions
 - Join / leave with **emergency** and **fast-track** priority
+- One active line at a time. Opening another place offers **Leave current line and join here** while the current line is still waiting or almost called. A line that is your turn or being served cannot be switched
 - One active entry per user per location (partial unique index)
 - Atomic **serving** claim via Postgres RPCs (`claim_next_queue_entry` / `claim_queue_entry`, `FOR UPDATE SKIP LOCKED`) — one person served per location at a time
 - Walk-ins stored in the same `queue_entries` table as app users
@@ -102,12 +103,13 @@ Internal runbook: [STAFF_ONBOARDING.md](./STAFF_ONBOARDING.md).
 - In-app notifications + optional **Web Push** (no SMS); **Alert Settings** persist preferences (`profiles.notification_preferences` + local cache) and opt out of push categories
 - **You're next** urgency — when position is **#1** and still waiting, `/queue` (normal + **Show big text**) and the Flow Bar use a distinct “about to be called” state (`lib/queue-next-state.ts`), separate from **your turn / serving**
 - Visit ratings after service — only if most recent entry is **`served` within 2 hours** and not already rated
-- **Help** (`/help`) — FAQ, contact (`support@qflow.co.za`), system status, clear local data
+- **Help** (`/help`) — FAQ, contact (`support@qflow.co.za`), system status, clear local data, and the full **Ask QFlow** card (**Powered by Llama**)
+- **Ask QFlow** — also a sparkle icon and the words **Ask QFlow** on the join sheet and the expanded queue sheet, so help stays on the sheet that is already open
 - **Edit profile** (`/profile/edit`) — display name + **profile photo** upload/remove via FastAPI → Supabase Storage `avatars` bucket (`UserAvatar` shared on Profile / Edit)
 - **POPIA**: download my data + delete account (anonymises queue tickets for stats)
 - Languages: English, Afrikaans, Zulu, Sesotho, Xhosa, Setswana
 - **Accessibility** prefs (high contrast, reduce motion, **Show big text** on My line) apply live via DOM/CSS; session expiry banner (FastAPI `X-Session-Expires-In` + client countdown); offline / outage banners
-- **Map** (`/map`) — Mapbox GL with capacity-colored pins, location search, geolocation, and **persistent directions** (route polyline + ETA summary) tied to queue lifecycle (`lib/active-route-store.ts`); tap a pin opens the same Join queue drawer as Home
+- **Map** (`/map`) — Mapbox GL with capacity-colored pins, location search, and geolocation. **Get directions** stays inside QFlow: one walking or driving line that ends on that place’s pin. While you are in the line, trip time and Walk/Drive live in the blue flow bar (`lib/active-route-store.ts`). Tapping a pin opens the same join sheet as Home
 
 ### Platform
 - Static export with placeholder dynamic routes (`/location/_/?id=…`, `/display/_/?id=…`); FastAPI rewrites legacy `/location/{uuid}` URLs
@@ -191,20 +193,20 @@ Notes:
 
 ## AI Assistant
 
-Ask QFlow is a chat on the Help screen (`/help`). It is not a canned FAQ matcher. Every question is sent to Cloudflare Workers AI, which runs **Llama 3.3 70B** (`@cf/meta/llama-3.3-70b-instruct-fp8-fast` unless `LLAMA_MODEL` overrides it). The Help badge says **Powered by Llama** and reads that model id from `GET /api/assistant/model`, then updates it from the chat response so the label matches the model that answered. The call sends the system prompt, recent turns, and the new question, with `max_tokens` 300. The server waits for the full reply, then returns it as one message.
+Ask QFlow is the in-app helper. On **Help** it is a full card with the **Powered by Llama** badge. On the join sheet and the expanded queue sheet it is only a sparkle icon and the label **Ask QFlow**; the chat opens underneath when tapped. It is not a canned FAQ matcher. Every question is sent to Cloudflare Workers AI, which runs **Llama 3.3 70B** (`@cf/meta/llama-3.3-70b-instruct-fp8-fast` unless `LLAMA_MODEL` overrides it). The model id comes from `GET /api/assistant/model`, then from the chat response, so the label matches the model that answered. The call sends the system prompt, recent turns, and the new question, with `max_tokens` 300. A question from a sheet also sends that place’s name. The server waits for the full reply, then returns it as one message. Production (`useqflow.app`) already has the Cloudflare account, token, and model set on the Render service that owns that domain.
 
 | Piece | Detail |
 |-------|--------|
 | Model | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (override with `LLAMA_MODEL`) |
 | Endpoint | `POST https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/run/{LLAMA_MODEL}` from FastAPI `POST /api/assistant/chat` |
-| Auth | `Authorization: Bearer {CLOUDFLARE_API_TOKEN}` — server only. Add the account id and token to `.env.local` locally and to **Render → qflow → Environment** (`sync: false` in `render.yaml`) |
+| Auth | `Authorization: Bearer {CLOUDFLARE_API_TOKEN}` — server only. Add the account id and token to `.env.local` locally and to the Render service for `useqflow.app` (`sync: false` in `render.yaml`) |
 | Reply | JSON field `result.response` (Workers AI envelope: `success`, `errors`, `messages`) |
-| Grounding | The system prompt includes a short description of QFlow (join a line, Fast Track, Emergency, map, directions, accessibility, notifications) plus the signed-in user’s **first name** and their active `queue_entries` row (location, position, people ahead, status, priority). Email and phone are never sent |
+| Grounding | The system prompt includes a short description of QFlow (join a line, Fast Track, Emergency, map, directions, accessibility, notifications) plus the signed-in user’s **first name** and their active `queue_entries` row (location, position, people ahead, estimated wait, status, priority). A sheet can add the place open on screen. Email and phone are never sent |
 | Limit | 20 messages per user per hour (in-memory counter on the API process) |
-| Log | Supabase table `assistant_messages` (`id`, `user_id`, `message`, `reply`, `created_at`). Users can read only their own rows. The service role inserts. Apply `supabase/migrations/20261013153000_assistant_messages.sql` |
+| Log | Supabase table `assistant_messages` (`id`, `user_id`, `message`, `reply`, `created_at`). Users can read only their own rows. The service role inserts. Migration `supabase/migrations/20261013153000_assistant_messages.sql` is applied on the production project |
 | Failure | A Workers AI timeout (45s read) or error returns a short fallback and is logged. The request does not crash |
 
-Try it: open [Help](http://127.0.0.1:8000/help) while signed in, tap **Ask QFlow**, then ask “How long is my wait?”.
+Try it while signed in: open a place sheet, the blue queue sheet, or [Help](http://127.0.0.1:8000/help), tap **Ask QFlow**, then ask “How long is my wait?” or “What is Fast Track?”.
 
 ### GitHub Actions CI
 
@@ -252,24 +254,31 @@ npm run db:push
 | `…_admin_accounts` | Multi-admin cellphone OTP (`admin_accounts`; env remains bootstrap) |
 | `…_notification_preferences` | `profiles.notification_preferences` JSONB for Alert Settings |
 | `…_avatars_storage` | Public `avatars` Storage bucket + RLS policies for profile photos |
+| `…_assistant_messages` | Ask QFlow log. RLS: a user can read only their own rows |
 
-After production deploy, optionally configure DB → HTTP push (needs **`pg_net`**):
+`pg_net` **0.20.4** is installed on the production database. `net.http_post` runs from `notifications_dispatch_web_push` after each in-app notification insert, so a phone alert can go out even when the staff screen is closed. Production `app_settings` already point at:
 
 ```sql
 insert into public.app_settings (key, value) values
-  ('push_dispatch_url', 'https://YOUR_DOMAIN/api/push/dispatch'),
+  ('push_dispatch_url', 'https://useqflow.app/api/push/dispatch'),
   ('push_dispatch_secret', 'same-as-PUSH_DISPATCH_SECRET')
 on conflict (key) do update set value = excluded.value;
 ```
 
-Check extension availability:
+The secret in that row must match `PUSH_DISPATCH_SECRET` on the Render service for `useqflow.app`. Enable the extension on a new project with:
+
+```sql
+create extension if not exists pg_net;
+```
+
+Check it with:
 
 ```bash
 npm run check:supabase
 # or scripts/check-pg-net.sql in the SQL Editor
 ```
 
-**If `pg_net` is unavailable**, deploy the Edge Function fallback:
+**If `pg_net` is unavailable** on another project, deploy the Edge Function fallback:
 
 ```bash
 npm run functions:deploy
@@ -327,6 +336,8 @@ All routes are served by **FastAPI** on the same origin as the UI (port 8000 loc
 | `GET` | `/api/queue/health` | Public | Queue service health |
 | `POST` | `/api/push/subscribe` | User session | Store Web Push subscription |
 | `POST` | `/api/push/dispatch` | Staff/admin JWT **or** `Bearer ${PUSH_DISPATCH_SECRET}` | Send Web Push via FastAPI `pywebpush` (`qflow_api/push_service.py`) |
+| `GET` | `/api/assistant/model` | Public | Llama model id shown on Ask QFlow |
+| `POST` | `/api/assistant/chat` | User Bearer JWT | Ask QFlow. Body: `message`, optional `history`, `conversation_id`, `place_name`. 20 messages per user per hour |
 | `POST` | `/api/staff/login` | — | Staff password verify + email OTP (rate limited) |
 | `POST` | `/api/staff/queue/claim` | Staff | Call / claim next or specific entry (`claim_*` RPCs as the staff JWT; no duplicate turn notify insert) |
 | `POST` | `/api/staff/walk-in` | Staff | Add walk-in |
@@ -683,7 +694,7 @@ eslint.config.mjs
 | Counter display | Pin `/display/_/?id=<locationId>` on desk hardware |
 | Visit ratings | Ineligible `/rate` → `/home?toast=rate_denied` |
 | Supabase tables / RLS | `npm run check:supabase` |
-| `pg_net` | Often unavailable — use staff JWT dispatch and/or Edge Function → FastAPI |
+| `pg_net` | Installed on production (`0.20.4`). New projects: `create extension if not exists pg_net;` then set `app_settings`. Staff JWT dispatch still works without it |
 | Push on status page | Needs VAPID **and** `PUSH_DISPATCH_SECRET` for `operational` |
 | Upstash | Optional; set for multi-instance OTP limits |
 | Uptime | UptimeRobot (external) — see below |
@@ -691,7 +702,7 @@ eslint.config.mjs
 
 ### Render deployment checklist
 
-Set these in **Render → qflow → Environment** (and keep `render.yaml` `sync: false` keys in sync when adding new ones):
+Set these on the **Render web service that serves `useqflow.app`** (and keep `render.yaml` `sync: false` keys in sync when adding new ones). `render.yaml` names a service `qflow`; the live domain is attached to the service that already has `www.useqflow.app` and `useqflow.app`.
 
 | Variable | Notes |
 |----------|--------|
@@ -700,7 +711,7 @@ Set these in **Render → qflow → Environment** (and keep `render.yaml` `sync:
 | `RESEND_*` / `ADMIN_OTP_*` | Staff/admin OTP email |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` / `PUSH_DISPATCH_SECRET` | Web Push |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox public token for `/map` — must be present at **`npm run build:web`** time (static export) |
-| `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | Server-only Workers AI credentials so Ask QFlow can call Llama (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`). Not `NEXT_PUBLIC_*` values — set them on the running API, then restart. Optional `LLAMA_MODEL` overrides the model id. Also apply the `assistant_messages` migration |
+| `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` / `LLAMA_MODEL` | Server-only Workers AI credentials. Production is set to `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. Not `NEXT_PUBLIC_*` values. A new deploy is required after changing them. `assistant_messages` is already applied on production |
 | `NEXT_PUBLIC_APP_URL` / `ALLOWED_ORIGINS` | `https://useqflow.app` |
 
 After changing any `NEXT_PUBLIC_*` value, **redeploy** so the static UI rebuilds with the new bake-time env.
