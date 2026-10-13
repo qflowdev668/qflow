@@ -202,7 +202,7 @@ Ask QFlow is a chat on the Help screen (`/help`). It is not a canned FAQ matcher
 | Grounding | The system prompt includes a short description of QFlow (join a line, Fast Track, Emergency, map, directions, accessibility, notifications) plus the signed-in user’s **first name** and their active `queue_entries` row (location, position, people ahead, status, priority). Email and phone are never sent |
 | Limit | 20 messages per user per hour (in-memory counter on the API process) |
 | Log | Supabase table `assistant_messages` (`id`, `user_id`, `message`, `reply`, `created_at`). Users can read only their own rows. The service role inserts. Apply `supabase/migrations/20261013153000_assistant_messages.sql` |
-| Failure | A Workers AI timeout (10s) or error returns a short fallback and is logged. The request does not crash |
+| Failure | A Workers AI timeout (45s read) or error returns a short fallback and is logged. The request does not crash |
 
 Try it: open [Help](http://127.0.0.1:8000/help) while signed in, tap **Ask QFlow**, then ask “How long is my wait?”.
 

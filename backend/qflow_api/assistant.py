@@ -22,7 +22,8 @@ logger = logging.getLogger("qflow.assistant")
 router = APIRouter(tags=["assistant"])
 
 DEFAULT_LLAMA_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-LLAMA_TIMEOUT_SECONDS = 10.0
+# Llama 3.3 70B often needs longer than 10s on a cold Workers AI call.
+LLAMA_TIMEOUT = httpx.Timeout(connect=10.0, read=45.0, write=10.0, pool=10.0)
 MAX_MESSAGE_CHARS = 800
 MAX_HISTORY_TURNS = 8
 
@@ -305,7 +306,7 @@ async def call_llama(system: str, history: list[HistoryTurn], user_message: str)
         "messages": build_llama_messages(system, history, user_message),
         "max_tokens": 300,
     }
-    async with httpx.AsyncClient(timeout=LLAMA_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient(timeout=LLAMA_TIMEOUT) as client:
         response = await client.post(
             url,
             headers={
