@@ -10,6 +10,8 @@ function SceneWrap({ children, className }: { children: ReactNode; className?: s
   return (
     <svg
       viewBox="0 0 320 240"
+      width="320"
+      height="240"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}

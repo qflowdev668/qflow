@@ -14,6 +14,27 @@ IP_MAX = 30
 
 _hits: dict[str, list[float]] = {}
 
+ASSISTANT_WINDOW_MS = 60 * 60 * 1000
+ASSISTANT_MAX = 20
+ASSISTANT_LIMIT_MESSAGE = (
+    "You've asked a lot of questions this hour. Please wait a bit and try again."
+)
+
+
+def reset_rate_limits() -> None:
+    """Test helper — drop in-memory counters."""
+    _hits.clear()
+
+
+async def enforce_assistant_rate_limit(user_id: str) -> None:
+    """Max 20 Ask QFlow messages per user per hour (in-memory, same style as OTP)."""
+    now = time.time()
+    key = f"assistant:{user_id}"
+    if _would_exceed(key, ASSISTANT_WINDOW_MS, ASSISTANT_MAX, now):
+        await _log_rate_limit_hit(f"/api/assistant/chat: user {user_id} (memory)")
+        raise HTTPException(status_code=429, detail=ASSISTANT_LIMIT_MESSAGE)
+    _record(key, ASSISTANT_WINDOW_MS, now)
+
 
 def client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")

@@ -228,6 +228,37 @@ async def test_join_queue_closed_and_already_in():
 
 
 @pytest.mark.asyncio
+async def test_join_queue_switches_off_another_waiting_line():
+    with (
+        patch(
+            "qflow_api.queue_service.rest_get_one",
+            new_callable=AsyncMock,
+            return_value={"id": "loc-b", "name": "Home Affairs", "queue_count": 0, "is_open": True},
+        ),
+        patch(
+            "qflow_api.queue_service.rest_get",
+            new_callable=AsyncMock,
+            return_value=[{"id": "old", "location_id": "loc-a", "status": "waiting"}],
+        ),
+        patch(
+            "qflow_api.queue_service.rest_patch",
+            new_callable=AsyncMock,
+            return_value={"id": "old", "status": "cancelled"},
+        ) as patch_call,
+        patch(
+            "qflow_api.queue_service.rest_insert",
+            new_callable=AsyncMock,
+            return_value={"id": "new", "position": 1},
+        ) as insert_call,
+    ):
+        result = await join_queue("tok", "user-1", "loc-b")
+    assert result["ok"] is True
+    assert result["locationName"] == "Home Affairs"
+    patch_call.assert_awaited()
+    insert_call.assert_awaited()
+
+
+@pytest.mark.asyncio
 async def test_leave_queue_success_via_patch():
     mock_response = MagicMock()
     mock_response.status_code = 200

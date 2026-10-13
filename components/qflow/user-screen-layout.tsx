@@ -10,7 +10,7 @@ import type { ReactNode } from "react"
  * 2. Content — title + message
  * 3. Action — primary CTA pinned above the tab bar
  *
- * Stays inside the AppShell max-w-md column (never full-bleed past the phone frame).
+ * Stays inside the AppShell column (never full-bleed past the app frame).
  */
 export function UserScreenLayout({
   illustration,
@@ -38,7 +38,7 @@ export function UserScreenLayout({
     <div
       data-testid="user-screen-layout"
       className={cn(
-        "relative mx-auto flex min-h-dvh w-full max-w-md flex-col bg-white",
+        "relative mx-auto flex h-dvh max-h-dvh w-full max-w-qflow flex-col overflow-hidden bg-white",
         className
       )}
     >
@@ -65,7 +65,7 @@ export function UserScreenLayout({
           {title}
         </h1>
         {subtitle && (
-          <p className="max-w-md text-base leading-relaxed text-muted-foreground">
+          <p className="max-w-qflow text-base leading-relaxed text-muted-foreground">
             {subtitle}
           </p>
         )}

@@ -6,6 +6,7 @@ import { useT } from "@/hooks/use-t"
 import { useChromeInsets } from "@/hooks/use-chrome-insets"
 import { TopBar } from "@/components/qflow/top-bar"
 import { MenuRow } from "@/components/qflow/user-screen-layout"
+import { AskQflowAssistant } from "@/components/qflow/ask-qflow-assistant"
 import { HelpSupportScene } from "@/components/qflow/illustrations/queue-scenes"
 import { Button } from "@/components/ui/button"
 import {
@@ -60,13 +61,15 @@ export function HelpSupportScreen() {
       <div className="min-h-0 flex-1 overflow-y-auto" style={{ paddingBottom }} data-testid="help-support-screen">
         {/* Compact hero so FAQ is visible without scrolling on most phones */}
         <div className="px-4 pb-2 pt-2">
-          <div className="mx-auto max-h-36 overflow-hidden rounded-3xl border border-border/80">
-            <HelpSupportScene className="w-full h-auto" />
+          <div className="mx-auto w-full max-w-xs overflow-hidden rounded-3xl border border-border/80">
+            <HelpSupportScene className="h-auto w-full" />
           </div>
         </div>
 
         <div className="px-4">
           <p className="mb-4 text-base text-muted-foreground">{t.helpIntro}</p>
+
+          <AskQflowAssistant />
 
           <section className="mb-8" data-testid="help-faq">
             <h2 className="mb-3 text-lg font-bold text-foreground">

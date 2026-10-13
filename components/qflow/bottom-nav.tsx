@@ -36,7 +36,7 @@ export function BottomNav() {
   const nav = (
     <nav
       data-testid="bottom-nav"
-      className="fixed bottom-0 left-1/2 z-[70] w-full max-w-md -translate-x-1/2 bg-white border-t border-border/80 safe-area-pb"
+      className="fixed bottom-0 left-1/2 z-[70] w-full max-w-qflow -translate-x-1/2 bg-white border-t border-border/80 safe-area-pb"
     >
       <div className="flex h-[72px] items-stretch justify-around">
         {navItems.map((item) => {

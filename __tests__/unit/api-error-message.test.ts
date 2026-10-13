@@ -30,4 +30,16 @@ describe("formatApiErrorMessage", () => {
       "Could not join the queue."
     )
   })
+
+  it("hides stack traces and storage internals", () => {
+    expect(
+      formatApiErrorMessage(
+        { detail: "TypeError: Cannot read properties of undefined (reading 'id')" },
+        "Try again."
+      )
+    ).toBe("Try again.")
+    expect(formatApiErrorMessage({ error: "Bucket not found" }, "Could not update photo.")).toBe(
+      "Could not update photo."
+    )
+  })
 })

@@ -123,7 +123,7 @@ export function LoginScreen() {
   return (
     <div className="fixed inset-0 bg-white flex flex-col">
       <div className="flex-1 flex flex-col justify-center px-6 py-8 overflow-auto">
-        <div className="w-full max-w-md mx-auto space-y-6">
+        <div className="w-full max-w-qflow mx-auto space-y-6">
           <div
             data-testid="login-brand"
             className="mb-2 select-none touch-none"

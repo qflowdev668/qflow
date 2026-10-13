@@ -34,6 +34,12 @@ services:
         value: https://useqflow.app
       - key: NEXT_PUBLIC_MAPBOX_TOKEN
         sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: LLAMA_MODEL
+        value: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
       - key: ALLOWED_ORIGINS
         value: https://useqflow.app
       - key: NEXT_PUBLIC_ADMIN_UNLOCK_PHRASE

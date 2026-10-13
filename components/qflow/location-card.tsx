@@ -7,6 +7,7 @@ import { getCapacityInfo, getLocationTypeLabel } from "@/lib/capacity-i18n"
 import { ACTIVE_STAFF, AVG_SERVICE_MINUTES } from "@/lib/supabase/helpers"
 import { cn } from "@/lib/utils"
 import type { Location } from "@/lib/app-context"
+import { ServiceIcon } from "@/components/qflow/service-icon"
 
 interface LocationCardProps {
   location: Location
@@ -66,6 +67,7 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
         )}
       >
         <div className="flex items-start justify-between mb-3">
+          <ServiceIcon type={location.type} name={location.name} className="mr-2 h-10 w-10 shrink-0" />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-foreground truncate">{location.name}</h3>
             <div className="flex items-center gap-1.5 mt-1">
@@ -167,6 +169,7 @@ export function LocationCard({ location, variant = "vertical", onClick, disabled
       )}
     >
       <div className="flex items-start justify-between">
+        <ServiceIcon type={location.type} name={location.name} className="mr-3 h-12 w-12 shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="font-semibold text-foreground truncate">{location.name}</h3>

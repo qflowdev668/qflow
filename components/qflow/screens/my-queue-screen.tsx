@@ -30,6 +30,7 @@ export function MyQueueScreen() {
   const isOffline = useOfflineStatus()
   const reduceMotion = useReducedMotion()
   const [showOfflineTooltip, setShowOfflineTooltip] = useState(false)
+  const [leaving, setLeaving] = useState(false)
   const [simpleViewActive, setSimpleViewActive] = useState(
     () => accessibility.simplifiedMode
   )
@@ -154,7 +155,12 @@ export function MyQueueScreen() {
         position={activeQueue.position}
         waitTime={estimatedWait}
         locationName={activeQueue.locationName}
-        onLeave={leaveQueue}
+        onLeave={() => {
+          if (leaving) return
+          setLeaving(true)
+          leaveQueue()
+        }}
+        leaving={leaving}
         onSwitchToNormal={() => setSimpleViewActive(false)}
         aboutToBeCalled={aboutToBeCalled}
         showNextTip={showNextTip}
@@ -412,7 +418,16 @@ export function MyQueueScreen() {
         <div className="relative mb-3">
           <Button 
             variant="outline"
-            onClick={isOffline ? () => setShowOfflineTooltip(true) : leaveQueue}
+            disabled={!isOffline && leaving}
+            onClick={
+              isOffline
+                ? () => setShowOfflineTooltip(true)
+                : () => {
+                    if (leaving) return
+                    setLeaving(true)
+                    leaveQueue()
+                  }
+            }
             className={cn(
               "w-full text-base font-semibold border-2 border-destructive text-destructive hover:bg-destructive hover:text-white rounded-xl",
               isLargeText ? "h-16 text-lg" : "h-14",
@@ -420,7 +435,7 @@ export function MyQueueScreen() {
             )}
           >
             <AlertCircle className={cn("mr-2", isLargeText ? "w-6 h-6" : "w-5 h-5")} />
-            {t.leaveQueue}
+            {leaving ? t.saving : t.leaveQueue}
           </Button>
           
           {/* Offline Tooltip */}
@@ -461,6 +476,7 @@ function SimpleQueueView({
   waitTime,
   locationName,
   onLeave,
+  leaving = false,
   onSwitchToNormal,
   aboutToBeCalled = false,
   showNextTip = false,
@@ -471,6 +487,7 @@ function SimpleQueueView({
   waitTime: number
   locationName: string
   onLeave: () => void
+  leaving?: boolean
   onSwitchToNormal: () => void
   aboutToBeCalled?: boolean
   showNextTip?: boolean
@@ -556,9 +573,10 @@ function SimpleQueueView({
         <Button
           type="button"
           onClick={onLeave}
+          disabled={leaving}
           className="h-16 w-full rounded-2xl bg-foreground text-xl font-semibold text-background hover:bg-foreground/90"
         >
-          {t.leaveQueue.toUpperCase()}
+          {leaving ? t.saving : t.leaveQueue.toUpperCase()}
         </Button>
         <Button
           type="button"

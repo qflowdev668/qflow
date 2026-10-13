@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button"
 import {
   formatRouteDistance,
   formatRouteDuration,
-  googleMapsDirectionsUrl,
   type RouteSummary,
   type TravelProfile,
 } from "@/lib/mapbox-directions"
@@ -24,10 +23,9 @@ type RouteSummaryCardProps = {
   className?: string
 }
 
-/** Shared distance / ETA / Open in Maps card (map overlay + Flow Bar). */
+/** Distance, walk or drive time, and retry — the route stays on the QFlow map. */
 export function RouteSummaryCard({
   route = null,
-  destination,
   travelProfile,
   loading = false,
   error = null,
@@ -111,22 +109,6 @@ export function RouteSummaryCard({
               </div>
             )}
           </div>
-          {!compact && (
-            <Button
-              type="button"
-              className="w-full h-10 rounded-xl bg-[#2563EB] hover:bg-[#2563EB]/90"
-              onClick={(e) => {
-                e.stopPropagation()
-                window.open(
-                  googleMapsDirectionsUrl(destination, route.profile),
-                  "_blank",
-                  "noopener,noreferrer"
-                )
-              }}
-            >
-              Open in Maps
-            </Button>
-          )}
         </div>
       )}
     </div>

@@ -7,8 +7,10 @@ import { TopBar } from "@/components/qflow/top-bar"
 import { useOfflineStatus } from "@/components/qflow/offline-banner"
 import { Button } from "@/components/ui/button"
 import { Users, Clock, Gauge, MapPin, Building2, Navigation, AlertTriangle, X, Ban, Bell, WifiOff, RefreshCw, ChevronDown, ChevronUp } from "lucide-react"
+import { ServiceIcon } from "@/components/qflow/service-icon"
 import { ACTIVE_STAFF, AVG_SERVICE_MINUTES } from "@/lib/supabase/helpers"
 import { cn } from "@/lib/utils"
+import { setDirectionsPending } from "@/lib/active-route-store"
 import { useState } from "react"
 
 // Get wait time color based on duration
@@ -20,7 +22,7 @@ function getWaitTimeColor(minutes: number) {
 }
 
 export function LocationDetailScreen() {
-  const { navigateTo, activeQueue, leaveQueue, selectedLocation } = useApp()
+  const { navigateTo, activeQueue, leaveQueue, selectedLocation, setSelectedLocation } = useApp()
   const t = useT()
   const isOffline = useOfflineStatus()
   const [showSwitchDialog, setShowSwitchDialog] = useState(false)
@@ -77,7 +79,9 @@ export function LocationDetailScreen() {
   }
 
   const handleGetDirections = () => {
-    window.open(`https://maps.google.com/?q=${location.coordinates.lat},${location.coordinates.lng}`, "_blank")
+    setSelectedLocation(location)
+    setDirectionsPending(location.id)
+    navigateTo("map")
   }
 
   const handleViewCurrentQueue = () => {
@@ -128,7 +132,7 @@ export function LocationDetailScreen() {
         {/* Icon */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-28 h-28 bg-white/10 backdrop-blur-sm rounded-3xl flex items-center justify-center border border-white/20">
-            <Building2 className="w-14 h-14 text-white" />
+            <ServiceIcon type={location.type} name={location.name} className="h-16 w-16" />
           </div>
         </div>
 

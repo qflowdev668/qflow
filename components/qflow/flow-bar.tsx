@@ -11,15 +11,27 @@ import {
 import { Bell, ChevronUp, MapPin } from "lucide-react"
 import { useApp } from "@/lib/app-context"
 import { RollerDigit } from "@/components/qflow/roller-digit"
+import { AskQflowAssistant } from "@/components/qflow/ask-qflow-assistant"
 import { JoinQueuePanel } from "@/components/qflow/join-queue-panel"
 import { RouteSummaryCard } from "@/components/qflow/route-summary-card"
 import {
   clearActiveRoute,
+  clearDirectionsPending,
+  getActiveRoute,
+  getDirectionsJob,
   setActiveRoute,
+  setDirectionsError,
+  setDirectionsPending,
   useActiveRoute,
+  useDirectionsJob,
 } from "@/lib/active-route-store"
-import { detectUserLocation } from "@/lib/map-geolocation"
-import { fetchMapboxRoute, type TravelProfile } from "@/lib/mapbox-directions"
+import { detectUserLocation, subscribeBetterFix, type GeoCoords } from "@/lib/map-geolocation"
+import {
+  fetchMapboxRoute,
+  formatRouteDistance,
+  formatRouteDuration,
+  type TravelProfile,
+} from "@/lib/mapbox-directions"
 import {
   FLOW_BAR_BOTTOM_NO_NAV,
   FLOW_BAR_BOTTOM_WITH_NAV,
@@ -42,8 +54,9 @@ function isYourTurnStatus(status: string) {
  * Collapsed pill morphs into an expanded sheet via Framer Motion layoutId.
  */
 export function FlowBar() {
-  const { activeQueue, currentUser, locations, currentScreen } = useApp()
+  const { activeQueue, currentUser, locations, currentScreen, navigateTo, setSelectedLocation } = useApp()
   const activeRoute = useActiveRoute()
+  const directionsJob = useDirectionsJob()
   const reduceMotion = useReducedMotion()
   const hasBottomNav = useHasBottomNav()
   const [mounted, setMounted] = useState(false)
@@ -53,7 +66,6 @@ export function FlowBar() {
   const [yourTurnPulse, setYourTurnPulse] = useState(false)
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
-  const [canOfferDirections, setCanOfferDirections] = useState(false)
   const prevStatusRef = useRef<string | null>(null)
   const expandedFullyRef = useRef(false)
 
@@ -142,17 +154,6 @@ export function FlowBar() {
     setExpanded(false)
   }, [])
 
-  useEffect(() => {
-    if (!expanded) return
-    let cancelled = false
-    void detectUserLocation().then((result) => {
-      if (!cancelled) setCanOfferDirections(result.ok)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [expanded])
-
   const queueLocation = activeQueue
     ? locations.find((loc) => loc.id === activeQueue.locationId)
     : null
@@ -165,34 +166,27 @@ export function FlowBar() {
       ? activeRoute
       : null
 
-  const requestDirections = useCallback(
-    async (profile: TravelProfile = "walking") => {
+  const routeRequestRef = useRef(0)
+
+  const drawRoute = useCallback(
+    async (origin: GeoCoords, profile: TravelProfile) => {
       if (!activeQueue || !queueLocation) return
+      const requestId = ++routeRequestRef.current
       setRouteLoading(true)
       setRouteError(null)
-      const geo = await detectUserLocation()
-      if (!geo.ok) {
-        setRouteLoading(false)
-        setRouteError("Enable location to get directions.")
-        setCanOfferDirections(false)
-        return
-      }
-      setCanOfferDirections(true)
-
-      if (activeRoute && activeRoute.locationId !== queueLocation.id) {
-        clearActiveRoute()
-      }
-
       const result = await fetchMapboxRoute(
-        geo.coords,
+        origin,
         queueLocation.coordinates,
         profile
       )
+      if (requestId !== routeRequestRef.current) return
       setRouteLoading(false)
       if (!result.ok) {
         setRouteError(result.error)
+        setDirectionsError(result.error)
         return
       }
+      clearDirectionsPending()
       setActiveRoute({
         queueEntryId: activeQueue.id,
         locationId: queueLocation.id,
@@ -200,8 +194,43 @@ export function FlowBar() {
         route: result.route,
       })
     },
-    [activeQueue, queueLocation, activeRoute]
+    [activeQueue, queueLocation]
   )
+
+  const requestDirections = useCallback(
+    async (profile: TravelProfile = "walking") => {
+      if (!activeQueue || !queueLocation) return
+      setRouteError(null)
+      const geo = await detectUserLocation()
+      if (!geo.ok) {
+        setRouteLoading(false)
+        const message = "Enable location to get directions."
+        setRouteError(message)
+        setDirectionsError(message)
+        return
+      }
+
+      if (activeRoute && activeRoute.locationId !== queueLocation.id) {
+        clearActiveRoute()
+      }
+
+      await drawRoute(geo.coords, profile)
+    },
+    [activeQueue, queueLocation, activeRoute, drawRoute]
+  )
+
+  useEffect(() => {
+    return subscribeBetterFix((coords) => {
+      if (!queueLocation) return
+      const route = getActiveRoute()
+      const pending = getDirectionsJob()
+      const forThisPlace =
+        route?.locationId === queueLocation.id ||
+        pending?.locationId === queueLocation.id
+      if (!forThisPlace) return
+      void drawRoute(coords, route?.route.profile ?? "walking")
+    })
+  }, [drawRoute, queueLocation])
 
   useEffect(() => {
     if (!expanded) return
@@ -248,7 +277,7 @@ export function FlowBar() {
           <motion.button
             type="button"
             aria-label="Close queue details"
-            className="fixed inset-0 z-[65] mx-auto max-w-md bg-black"
+            className="fixed inset-0 z-[65] mx-auto max-w-qflow bg-black"
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.15 }}
             exit={{ opacity: 0 }}
@@ -265,7 +294,7 @@ export function FlowBar() {
       <div
         data-testid="flow-bar-chrome"
         className={cn(
-          "pointer-events-none fixed left-1/2 z-[66] w-full max-w-md -translate-x-1/2 px-4",
+          "pointer-events-none fixed left-1/2 z-[66] w-full max-w-qflow -translate-x-1/2 px-4",
           expanded && "top-0 flex flex-col justify-end"
         )}
         style={{
@@ -276,24 +305,10 @@ export function FlowBar() {
       >
         <AnimatePresence mode="wait">
           {!expanded ? (
-            <div className="pointer-events-auto flex w-full flex-col gap-2">
-              {routeForThisQueue && (
-                <RouteSummaryCard
-                  route={routeForThisQueue.route}
-                  destination={routeForThisQueue.locationCoords}
-                  travelProfile={routeForThisQueue.route.profile}
-                  loading={routeLoading}
-                  error={routeError}
-                  compact
-                  onRetry={() => void requestDirections(routeForThisQueue.route.profile)}
-                  onProfileChange={(profile) => void requestDirections(profile)}
-                  className="shadow-md"
-                />
-              )}
+            <div className="pointer-events-auto flex w-full flex-col">
               <motion.div
               key="collapsed"
               layoutId={LAYOUT_ID}
-              role="button"
               tabIndex={0}
               aria-expanded={false}
               aria-label={`Queue at ${activeQueue.locationName}, position ${activeQueue.position}`}
@@ -308,7 +323,7 @@ export function FlowBar() {
                     : "standard"
               }
               className={cn(
-                "h-[60px] w-full rounded-2xl flex items-center gap-3 px-4 cursor-pointer",
+                "min-h-[60px] w-full rounded-2xl flex items-center gap-3 px-4 py-2.5 cursor-pointer",
                 "text-white border border-white/15",
                 "bg-[rgba(37,99,235,0.85)] backdrop-blur-[20px]",
                 priorityRing,
@@ -334,24 +349,72 @@ export function FlowBar() {
                 )}
                 aria-hidden
               />
-              <div className="flex-1 min-w-0 flex items-center gap-2">
-                <span className="truncate text-sm font-semibold">
-                  {activeQueue.locationName}
-                </span>
-                {isYourTurn ? (
-                  <Bell
-                    className={cn(
-                      "w-5 h-5 shrink-0 text-amber-200",
-                      yourTurnPulse && !reduceMotion && "scale-110"
-                    )}
-                    aria-hidden
-                  />
-                ) : (
-                  <span className="text-sm font-bold shrink-0 inline-flex items-baseline gap-0.5">
-                    #<RollerDigit value={activeQueue.position} className="text-white" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="truncate text-sm font-semibold">
+                    {activeQueue.locationName}
                   </span>
-                )}
+                  {isYourTurn ? (
+                    <Bell
+                      className={cn(
+                        "w-5 h-5 shrink-0 text-amber-200",
+                        yourTurnPulse && !reduceMotion && "scale-110"
+                      )}
+                      aria-hidden
+                    />
+                  ) : (
+                    <span className="text-sm font-bold shrink-0 inline-flex items-baseline gap-0.5">
+                      #<RollerDigit value={activeQueue.position} className="text-white" />
+                    </span>
+                  )}
+                </div>
+                {routeForThisQueue ? (
+                  <p className="truncate text-[13px] leading-tight text-white/90">
+                    {formatRouteDistance(routeForThisQueue.route.distanceMeters)}
+                    {" · "}
+                    {formatRouteDuration(
+                      routeForThisQueue.route.durationSeconds,
+                      routeForThisQueue.route.profile
+                    )}
+                  </p>
+                ) : directionsJob?.locationId === queueLocation?.id ? (
+                  <p className="truncate text-[13px] leading-tight text-white/90">
+                    {directionsJob.error ?? "Getting directions…"}
+                  </p>
+                ) : null}
               </div>
+              {routeForThisQueue && (
+                <div
+                  className="flex shrink-0 rounded-full bg-black/15 p-0.5 text-xs font-semibold"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-full px-2.5 py-1",
+                      routeForThisQueue.route.profile === "walking"
+                        ? "bg-white text-[#2563EB]"
+                        : "text-white"
+                    )}
+                    onClick={() => void requestDirections("walking")}
+                  >
+                    Walk
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-full px-2.5 py-1",
+                      routeForThisQueue.route.profile === "driving"
+                        ? "bg-white text-[#2563EB]"
+                        : "text-white"
+                    )}
+                    onClick={() => void requestDirections("driving")}
+                  >
+                    Drive
+                  </button>
+                </div>
+              )}
               <ChevronUp
                 className={cn(
                   "w-5 h-5 shrink-0 opacity-90",
@@ -381,20 +444,20 @@ export function FlowBar() {
               dragElastic={0.12}
               onDragEnd={onDragEnd}
             >
-              <div className="flex justify-center pt-3 pb-1">
+              <div className="flex justify-center pt-4 pb-3">
                 <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
               </div>
-              <div className="px-4 pb-2">
-                <h2 className="text-xl font-bold leading-tight">
+              <div className="px-5 pb-5">
+                <h2 className="text-xl font-bold leading-snug">
                   {activeQueue.locationName}
                 </h2>
-                <p className="flex items-start gap-1.5 text-sm text-muted-foreground mt-1">
+                <p className="flex items-start gap-1.5 text-sm text-muted-foreground mt-2">
                   <MapPin className="w-4 h-4 mt-0.5 shrink-0" />
                   <span>{activeQueue.locationAddress}</span>
                 </p>
               </div>
               <motion.div
-                className="px-4 pb-6 overflow-y-auto flex-1"
+                className="px-5 pb-2 overflow-y-auto flex-1"
                 initial={reduceMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={
@@ -418,18 +481,25 @@ export function FlowBar() {
                       error={routeError}
                       onRetry={() => void requestDirections(routeForThisQueue.route.profile)}
                       onProfileChange={(profile) => void requestDirections(profile)}
-                      className="shadow-none"
+                      className="border-0 bg-[#EFF6FF] shadow-none"
                     />
                   </div>
                 ) : null}
                 <JoinQueuePanel
                   mode="active"
+                  location={queueLocation}
                   useRollerDigits
                   onLeft={collapse}
-                  showDirections={
-                    !routeForThisQueue && (canOfferDirections || Boolean(routeError))
-                  }
-                  onDirections={() => void requestDirections("walking")}
+                  showDirections
+                  directionsBusy={routeLoading}
+                  onDirections={() => {
+                    if (queueLocation) setSelectedLocation(queueLocation)
+                    if (queueLocation && !routeForThisQueue) {
+                      setDirectionsPending(queueLocation.id)
+                    }
+                    collapse()
+                    if (currentScreen !== "map") navigateTo("map")
+                  }}
                 />
                 {routeLoading && !routeForThisQueue && (
                   <p className="mt-2 text-sm text-muted-foreground">Calculating directions…</p>
@@ -440,6 +510,13 @@ export function FlowBar() {
                   </p>
                 )}
               </motion.div>
+              <div className="max-h-[45vh] shrink-0 overflow-y-auto px-5 pb-6 pt-5">
+                <AskQflowAssistant
+                  compact
+                  placeName={activeQueue.locationName}
+                  className="mb-0"
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

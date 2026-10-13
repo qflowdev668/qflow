@@ -9,6 +9,7 @@ jest.mock("@/lib/app-context", () => ({
     selectedLocation: {
       id: "loc-1",
       name: "Test Bank",
+      type: "bank" as const,
       address: "1 Main St",
       queueCount: 0,
       capacity: 20,
@@ -69,7 +70,9 @@ describe("JoinQueueDrawer", () => {
       <JoinQueueDrawer open={true} onOpenChange={jest.fn()} />
     )
     expect(await findByTestId("join-queue-drawer")).toBeInTheDocument()
+    expect(await findByTestId("service-icon-bank")).toBeInTheDocument()
     expect(await findByText("Join the line")).toBeInTheDocument()
+    expect(await findByTestId("ask-qflow-toggle")).toBeInTheDocument()
   })
 
   it("anchors the sheet to the bottom of the viewport", async () => {

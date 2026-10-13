@@ -258,7 +258,7 @@ export function AccessibilitySettingsScreen() {
       </div>
 
       <div
-        className="fixed left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-border bg-background p-4"
+        className="fixed left-1/2 z-40 w-full max-w-qflow -translate-x-1/2 border-t border-border bg-background p-4"
         style={{ bottom: fixedFooterBottom }}
         data-testid="fixed-save-footer"
       >
@@ -273,7 +273,7 @@ export function AccessibilitySettingsScreen() {
 
       {showSavedToast && (
         <div
-          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl border border-border bg-card p-4 shadow-lg animate-in slide-in-from-bottom"
+          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-qflow -translate-x-1/2 rounded-xl border border-border bg-card p-4 shadow-lg animate-in slide-in-from-bottom"
           style={{ bottom: paddingBottom }}
           data-testid="a11y-saved-toast"
         >

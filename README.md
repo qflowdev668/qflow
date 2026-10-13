@@ -174,6 +174,9 @@ Copy from `.env.local.example`. Never commit `.env.local`.
 | `NEXT_PUBLIC_APP_URL` | Production | Canonical app URL (`https://useqflow.app`) |
 | `ALLOWED_ORIGINS` | Production | Comma-separated CORS origins for FastAPI (e.g. `https://useqflow.app`) |
 | `NEXT_PUBLIC_API_URL` | Optional | Leave empty when UI and API share one host |
+| `CLOUDFLARE_ACCOUNT_ID` | Ask QFlow | Cloudflare account id for Workers AI. Server-only. Set in `.env.local` and on Render |
+| `CLOUDFLARE_API_TOKEN` | Ask QFlow | Server-only API token with Workers AI permission. Not baked into the static UI |
+| `LLAMA_MODEL` | Ask QFlow | Optional. Defaults to `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 | `UPSTASH_REDIS_REST_URL` | Optional | Distributed OTP rate limits |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | Upstash REST token |
 | `SUPABASE_DB_PASSWORD` | Optional | For `npm run db:backup` / linked dumps |
@@ -184,6 +187,24 @@ Notes:
 - Generate VAPID keys: `npm run pwa:vapid`
 - Web Push is **operational** on `/api/status` only when **both** VAPID keys and `PUSH_DISPATCH_SECRET` are set on the FastAPI host. VAPID alone marks Push as **degraded** (staff JWT can still send; DB/Edge webhooks cannot authorize).
 - Without `NEXT_PUBLIC_MAPBOX_TOKEN` at build time, `/map` shows “Map is unavailable…” (token is public — still do not commit `.env.local`).
+- Without `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` on the FastAPI host, Ask QFlow still opens, but each question gets the friendly “couldn’t reach the assistant” reply. The token is never sent to the browser.
+
+## AI Assistant
+
+Ask QFlow is a chat on the Help screen (`/help`). It is not a canned FAQ matcher. Every question is sent to Cloudflare Workers AI, which runs **Llama 3.3 70B** (`@cf/meta/llama-3.3-70b-instruct-fp8-fast` unless `LLAMA_MODEL` overrides it). The Help badge says **Powered by Llama** and reads that model id from `GET /api/assistant/model`, then updates it from the chat response so the label matches the model that answered. The call sends the system prompt, recent turns, and the new question, with `max_tokens` 300. The server waits for the full reply, then returns it as one message.
+
+| Piece | Detail |
+|-------|--------|
+| Model | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (override with `LLAMA_MODEL`) |
+| Endpoint | `POST https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/run/{LLAMA_MODEL}` from FastAPI `POST /api/assistant/chat` |
+| Auth | `Authorization: Bearer {CLOUDFLARE_API_TOKEN}` — server only. Add the account id and token to `.env.local` locally and to **Render → qflow → Environment** (`sync: false` in `render.yaml`) |
+| Reply | JSON field `result.response` (Workers AI envelope: `success`, `errors`, `messages`) |
+| Grounding | The system prompt includes a short description of QFlow (join a line, Fast Track, Emergency, map, directions, accessibility, notifications) plus the signed-in user’s **first name** and their active `queue_entries` row (location, position, people ahead, status, priority). Email and phone are never sent |
+| Limit | 20 messages per user per hour (in-memory counter on the API process) |
+| Log | Supabase table `assistant_messages` (`id`, `user_id`, `message`, `reply`, `created_at`). Users can read only their own rows. The service role inserts. Apply `supabase/migrations/20261013153000_assistant_messages.sql` |
+| Failure | A Workers AI timeout (10s) or error returns a short fallback and is logged. The request does not crash |
+
+Try it: open [Help](http://127.0.0.1:8000/help) while signed in, tap **Ask QFlow**, then ask “How long is my wait?”.
 
 ### GitHub Actions CI
 
@@ -679,6 +700,7 @@ Set these in **Render → qflow → Environment** (and keep `render.yaml` `sync:
 | `RESEND_*` / `ADMIN_OTP_*` | Staff/admin OTP email |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` / `PUSH_DISPATCH_SECRET` | Web Push |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox public token for `/map` — must be present at **`npm run build:web`** time (static export) |
+| `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | Server-only Workers AI credentials so Ask QFlow can call Llama (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`). Not `NEXT_PUBLIC_*` values — set them on the running API, then restart. Optional `LLAMA_MODEL` overrides the model id. Also apply the `assistant_messages` migration |
 | `NEXT_PUBLIC_APP_URL` / `ALLOWED_ORIGINS` | `https://useqflow.app` |
 
 After changing any `NEXT_PUBLIC_*` value, **redeploy** so the static UI rebuilds with the new bake-time env.

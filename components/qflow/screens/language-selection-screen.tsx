@@ -96,7 +96,7 @@ export function LanguageSelectionScreen() {
 
       {showToast && (
         <div
-          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl border border-border bg-card p-4 shadow-lg animate-in slide-in-from-bottom"
+          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-qflow -translate-x-1/2 rounded-xl border border-border bg-card p-4 shadow-lg animate-in slide-in-from-bottom"
           style={{ bottom: paddingBottom }}
         >
           <p className="text-center text-foreground">{toastMessage}</p>

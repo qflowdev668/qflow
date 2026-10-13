@@ -9,6 +9,7 @@ const mockSetSelectedLocation = jest.fn()
 
 jest.mock("@/lib/map-geolocation", () => ({
   detectUserLocation: jest.fn().mockResolvedValue({ ok: false, reason: "denied" }),
+  subscribeBetterFix: jest.fn(() => () => {}),
   locationBannerMessage: () => "Location is blocked.",
 }))
 

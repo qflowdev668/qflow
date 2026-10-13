@@ -92,7 +92,7 @@ export function OnboardingScreen() {
 
   if (currentStep === 0) {
     return (
-      <div className="fixed inset-0 bg-white flex flex-col">
+      <div className="relative mx-auto flex h-dvh max-h-dvh w-full max-w-qflow flex-col overflow-hidden bg-white">
         <div className="flex justify-end p-4">
           <button
             type="button"
@@ -152,7 +152,13 @@ export function OnboardingScreen() {
           </div>
         </div>
 
-        <div className="shrink-0 p-6 pb-8 border-t border-border/80">{primaryButton}</div>
+        <div
+          data-testid="user-screen-layout-footer"
+          className="shrink-0 border-t border-border/80 bg-white px-6 pt-6"
+          style={{ paddingBottom: "2rem" }}
+        >
+          {primaryButton}
+        </div>
       </div>
     )
   }

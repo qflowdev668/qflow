@@ -18,6 +18,13 @@ export type ActiveRouteState = {
 }
 
 let memory: ActiveRouteState | null = null
+let directionsAttempt = 0
+let directionsJob: {
+  locationId: string
+  error: string | null
+  /** Changes on every tap so the map starts a new route instead of ignoring a repeat. */
+  requestedAt: number
+} | null = null
 const listeners = new Set<() => void>()
 
 function emit() {
@@ -63,6 +70,28 @@ export function clearActiveRoute() {
   setActiveRoute(null)
 }
 
+/** Set while Get directions is resolving, so the map can show progress immediately. */
+export function setDirectionsPending(locationId: string) {
+  directionsJob = { locationId, error: null, requestedAt: ++directionsAttempt }
+  emit()
+}
+
+export function setDirectionsError(message: string) {
+  if (!directionsJob) return
+  directionsJob = { ...directionsJob, error: message }
+  emit()
+}
+
+export function clearDirectionsPending() {
+  if (!directionsJob) return
+  directionsJob = null
+  emit()
+}
+
+export function getDirectionsJob() {
+  return directionsJob
+}
+
 /**
  * Keep the stored route aligned with the Flow Bar / active queue_entries row.
  * Clears on leave, served, no-show, or a mismatched entry.
@@ -91,24 +120,34 @@ export function syncRouteToQueueLifecycle(activeQueue: QueueEntry | null) {
   }
 }
 
-export function useActiveRoute(): ActiveRouteState | null {
-  const [state, setState] = useState<ActiveRouteState | null>(() => getActiveRoute())
+function useStoreSnapshot<T>(read: () => T): T {
+  const [state, setState] = useState<T>(read)
 
   useEffect(() => {
-    const sync = () => setState(getActiveRoute())
+    const sync = () => setState(read())
     listeners.add(sync)
     sync()
     return () => {
       listeners.delete(sync)
     }
-  }, [])
+  }, [read])
 
   return state
+}
+
+export function useActiveRoute(): ActiveRouteState | null {
+  return useStoreSnapshot(getActiveRoute)
+}
+
+export function useDirectionsJob() {
+  return useStoreSnapshot(getDirectionsJob)
 }
 
 /** Test helper — reset memory + storage between cases. */
 export function __resetActiveRouteStoreForTests() {
   memory = null
+  directionsAttempt = 0
+  directionsJob = null
   writeStorage(null)
   emit()
 }

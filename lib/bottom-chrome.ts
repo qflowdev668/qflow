@@ -1,6 +1,6 @@
 /** Shared bottom-chrome spacing for tab bar + Flow Bar + map overlays. */
 export const BOTTOM_NAV_HEIGHT_PX = 72
-export const FLOW_BAR_PILL_HEIGHT_PX = 60
+export const FLOW_BAR_PILL_HEIGHT_PX = 84
 export const BOTTOM_CHROME_GAP_PX = 12
 /** Fixed save strip: p-4 + h-[52] button. */
 export const FIXED_SAVE_FOOTER_PX = 84

@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
 
 from qflow_api.config import settings
+from qflow_api.assistant import router as assistant_router
 from qflow_api.routers import admin, auth_routes, display, misc, queue, staff, status, user
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -70,6 +71,7 @@ app.include_router(admin.router)
 app.include_router(user.router)
 app.include_router(display.router)
 app.include_router(misc.router)
+app.include_router(assistant_router)
 
 
 @app.get("/health")

@@ -4,13 +4,22 @@
 import { render, screen, fireEvent } from "@testing-library/react"
 import { JoinQueuePanel } from "@/components/qflow/join-queue-panel"
 
+var mockActiveQueue: {
+  locationId: string
+  locationName: string
+  position: number
+  status: string
+} | null = null
+
 jest.mock("@/lib/app-context", () => ({
   useApp: () => ({
     joinQueue: jest.fn(),
     leaveQueue: jest.fn(),
     navigateTo: jest.fn(),
     selectedLocation: null,
-    activeQueue: null,
+    get activeQueue() {
+      return mockActiveQueue
+    },
     authError: null,
     clearAuthError: jest.fn(),
   }),
@@ -36,6 +45,7 @@ jest.mock("@/hooks/use-t", () => ({
             needInternetToJoin: "Need internet",
             youreInQueue: "In queue",
             leavingQueueWarning: "Leaving {name}",
+            leaveCurrentJoinHere: "Leave current line and join here",
             priorityPolice: "Police",
             priorityParamedic: "Paramedic",
             priorityFirefighter: "Firefighter",
@@ -70,6 +80,23 @@ const location = {
   distance: "1 km",
   coordinates: { lat: -26.2, lng: 28.0 },
 }
+
+describe("JoinQueuePanel switch lines", () => {
+  afterEach(() => {
+    mockActiveQueue = null
+  })
+
+  it("offers to leave the current line and join this place", () => {
+    mockActiveQueue = {
+      locationId: "loc-other",
+      locationName: "ABSA Bank Sandton",
+      position: 1,
+      status: "waiting",
+    }
+    render(<JoinQueuePanel location={location} mode="join" />)
+    expect(screen.getByRole("button", { name: "Leave current line and join here" })).toBeEnabled()
+  })
+})
 
 describe("JoinQueuePanel Directions", () => {
   it("does not render Directions when showDirections is false", () => {

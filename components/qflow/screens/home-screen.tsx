@@ -24,11 +24,13 @@ import { useServerOutage } from "@/components/qflow/server-outage-banner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { useChromeInsets } from "@/hooks/use-chrome-insets"
+import { Skeleton } from "@/components/ui/skeleton"
 
 const categoryIds = ["all", "clinic", "bank", "government", "other"] as const
 
 export function HomeScreen() {
-  const { currentUser, locations, navigateTo, notifications, setSelectedLocation, refreshLocations, activeQueue } = useApp()
+  const { currentUser, locations, locationsReady, navigateTo, notifications, setSelectedLocation, refreshLocations, activeQueue } = useApp()
   const t = useT()
   const { isServerDown } = useServerOutage()
   const searchParams = useSearchParams()
@@ -94,6 +96,7 @@ export function HomeScreen() {
     }
   }
 
+  const { paddingBottom } = useChromeInsets()
   const unreadCount = notifications.filter(n => !n.read).length
 
   const getGreeting = () => {
@@ -140,7 +143,7 @@ export function HomeScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-28">
+    <div className="min-h-dvh bg-white" style={{ paddingBottom }}>
       {/* Panel 1 — greeting + visual welcome */}
       <section className="px-4 pt-6 pb-4">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -165,8 +168,8 @@ export function HomeScreen() {
           </button>
         </div>
 
-        <div className="rounded-3xl overflow-hidden border border-border/80 mb-4">
-          <WelcomeHomeScene className="w-full h-auto" />
+        <div className="mb-4 h-40 overflow-hidden rounded-3xl border border-border/80 sm:h-48 lg:h-56">
+          <WelcomeHomeScene className="h-full w-full" />
         </div>
 
         {showInstallBanner && (
@@ -299,7 +302,18 @@ export function HomeScreen() {
 
       <section className="px-4 pb-4">
         <h2 className="text-lg font-bold text-foreground mb-3">{t.allLocations}</h2>
-        <div className={cn("space-y-3", isServerDown && "opacity-60")}>
+        {locationsReady === false ? (
+          <div className="space-y-3" data-testid="home-location-skeletons" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="rounded-2xl border border-border/80 bg-white p-4">
+                <Skeleton className="mb-3 h-5 w-2/3" />
+                <Skeleton className="mb-2 h-4 w-1/2" />
+                <Skeleton className="h-4 w-1/3" />
+              </div>
+            ))}
+          </div>
+        ) : (
+        <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-3", isServerDown && "opacity-60")}>
           {sortedLocations.map((location) => (
             <LocationCard
               key={location.id}
@@ -310,8 +324,9 @@ export function HomeScreen() {
             />
           ))}
         </div>
+        )}
 
-        {sortedLocations.length === 0 && (
+        {locationsReady !== false && sortedLocations.length === 0 && (
           <div className="text-center py-8">
             <FindLocationScene className="w-full max-w-xs mx-auto h-auto mb-4 rounded-2xl" />
             <p className="text-muted-foreground font-medium">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useApp, type Location } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
@@ -10,6 +10,7 @@ import { RouteSummaryCard } from "@/components/qflow/route-summary-card"
 import {
   detectUserLocation,
   locationBannerMessage,
+  subscribeBetterFix,
   LOW_ACCURACY_METERS,
   type GeoCoords,
   type GeoFailReason,
@@ -20,10 +21,16 @@ import {
 } from "@/lib/mapbox-directions"
 import {
   clearActiveRoute,
+  clearDirectionsPending,
+  getActiveRoute,
+  getDirectionsJob,
   setActiveRoute,
+  setDirectionsError,
+  setDirectionsPending,
   useActiveRoute,
+  useDirectionsJob,
 } from "@/lib/active-route-store"
-import { ABOVE_BOTTOM_NAV } from "@/lib/bottom-chrome"
+import { ABOVE_BOTTOM_NAV, ABOVE_FLOW_BAR_PILL } from "@/lib/bottom-chrome"
 import { MapLocationSearch } from "@/components/qflow/map-location-search"
 import { Filter, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -36,6 +43,7 @@ export function MapScreen() {
   } = useApp()
   const t = useT()
   const activeRoute = useActiveRoute()
+  const directionsJob = useDirectionsJob()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null)
@@ -54,7 +62,7 @@ export function MapScreen() {
     activeRoute?.route.profile ?? "walking"
   )
 
-  const requestLocation = useCallback(async () => {
+  const requestLocation = useCallback(async (recenter = false) => {
     setLocationLoading(true)
     const result = await detectUserLocation()
     setLocationLoading(false)
@@ -62,7 +70,7 @@ export function MapScreen() {
       setUserLocation(result.coords)
       setLocationFailReason(null)
       setShowLocationBanner(false)
-      setCenterOnUserToken(Date.now())
+      if (recenter) setCenterOnUserToken(Date.now())
       return
     }
     setUserLocation(null)
@@ -71,7 +79,7 @@ export function MapScreen() {
   }, [])
 
   useEffect(() => {
-    void requestLocation()
+    void requestLocation(false)
   }, [requestLocation])
 
   useEffect(() => {
@@ -97,6 +105,15 @@ export function MapScreen() {
     [locations, searchQuery, capacityFilter]
   )
 
+  const mapLocations = useMemo(() => {
+    if (!activeRoute) return filteredLocations
+    const destination = locations.find((loc) => loc.id === activeRoute.locationId)
+    if (!destination || filteredLocations.some((loc) => loc.id === destination.id)) {
+      return filteredLocations
+    }
+    return [...filteredLocations, destination]
+  }, [filteredLocations, locations, activeRoute])
+
   const handlePinClick = (location: Location) => {
     // Do not clear the active-queue route when browsing another pin.
     setSelectedLocation(location)
@@ -107,9 +124,22 @@ export function MapScreen() {
 
   const loadDirections = useCallback(
     async (destination: Location, profile: TravelProfile = travelProfile) => {
-      if (!userLocation) return
       setRouteLoading(true)
       setRouteError(null)
+
+      let origin = userLocation
+      if (!origin) {
+        const geo = await detectUserLocation()
+        if (!geo.ok) {
+          setRouteLoading(false)
+          setRouteError(locationBannerMessage(geo.reason))
+          setShowLocationBanner(true)
+          setLocationFailReason(geo.reason)
+          return
+        }
+        origin = geo.coords
+        setUserLocation(geo.coords)
+      }
 
       // Requesting directions to a different place replaces the previous route.
       if (activeRoute && activeRoute.locationId !== destination.id) {
@@ -117,16 +147,18 @@ export function MapScreen() {
       }
 
       const result = await fetchMapboxRoute(
-        userLocation,
+        origin,
         destination.coordinates,
         profile
       )
       setRouteLoading(false)
       if (!result.ok) {
         setRouteError(result.error)
+        setDirectionsError(result.error)
         return
       }
       setTravelProfile(profile)
+      clearDirectionsPending()
       setActiveRoute({
         queueEntryId:
           activeQueue && activeQueue.locationId === destination.id
@@ -140,11 +172,61 @@ export function MapScreen() {
     [userLocation, travelProfile, activeRoute, activeQueue]
   )
 
+  const loadDirectionsRef = useRef(loadDirections)
+  const locationsRef = useRef(locations)
+  loadDirectionsRef.current = loadDirections
+  locationsRef.current = locations
+
+  useEffect(() => {
+    return subscribeBetterFix((coords) => {
+      setUserLocation(coords)
+      const route = getActiveRoute()
+      const job = getDirectionsJob()
+      const locationId = route?.locationId ?? job?.locationId
+      if (!locationId) return
+      const dest = locationsRef.current.find((loc) => loc.id === locationId)
+      if (!dest) return
+      void loadDirectionsRef.current(dest, route?.route.profile ?? "walking")
+    })
+  }, [])
+
   const directionsTarget = selectedLocation
+  const directionsStarted = useRef<string | null>(null)
+
   const handleDirections = () => {
     if (!directionsTarget) return
-    void loadDirections(directionsTarget, "walking")
+    directionsStarted.current = null
+    setDirectionsPending(directionsTarget.id)
+    setJoinDrawerOpen(false)
   }
+
+  // Home, the queue sheet, and the place page all set a pending job and land
+  // here. This screen is what draws the line, so a tap never depends on a
+  // second press to "wake up" the map.
+  useEffect(() => {
+    if (!directionsJob) {
+      directionsStarted.current = null
+      return
+    }
+    if (routeLoading) return
+    if (activeRoute?.locationId === directionsJob.locationId) return
+    const dest = locations.find((l) => l.id === directionsJob.locationId)
+    if (!dest) return
+    const attempt = `${dest.id}:${directionsJob.requestedAt}`
+    if (directionsStarted.current === attempt) return
+    directionsStarted.current = attempt
+    setSelectedLocation(dest)
+    setContextLocation(dest)
+    setJoinDrawerOpen(false)
+    void loadDirections(dest, "walking")
+  }, [
+    directionsJob,
+    locations,
+    activeRoute,
+    routeLoading,
+    loadDirections,
+    setContextLocation,
+  ])
 
   const cycleCapacityFilter = () => {
     setCapacityFilter((prev) => {
@@ -164,15 +246,24 @@ export function MapScreen() {
           ? t.filterFull
           : t.filterAll
 
-  const showRouteCard = Boolean(
-    !activeQueue && (activeRoute || routeError || routeLoading)
-  )
+  const showRouteCard = Boolean(activeRoute || routeError || routeLoading)
+  const pendingDestination = directionsJob
+    ? locations.find((loc) => loc.id === directionsJob.locationId) ?? null
+    : null
+  const routeEnd =
+    (activeRoute
+      ? locations.find((loc) => loc.id === activeRoute.locationId)?.coordinates
+      : null) ??
+    activeRoute?.locationCoords ??
+    pendingDestination?.coordinates ??
+    null
+  const overlayBottom = activeQueue ? ABOVE_FLOW_BAR_PILL : ABOVE_BOTTOM_NAV
 
   return (
-    <div className="fixed inset-0 z-0 mx-auto w-full max-w-md overflow-hidden bg-[#EFF6FF]">
+    <div className="fixed inset-0 z-[1] h-dvh w-full overflow-hidden bg-[#EFF6FF]">
       <div className="absolute inset-0 z-0 h-full w-full">
         <QflowMap
-          locations={filteredLocations}
+          locations={mapLocations}
           selectedLocationId={selectedLocation?.id ?? activeRoute?.locationId ?? null}
           onSelectLocation={handlePinClick}
           t={t}
@@ -180,11 +271,13 @@ export function MapScreen() {
           userLocation={userLocation}
           centerOnUserToken={centerOnUserToken}
           routeGeometry={activeRoute?.route.geometry ?? null}
-          lockCamera={Boolean(activeRoute)}
+          routeEnd={routeEnd}
+          lockCamera={Boolean(activeRoute || directionsJob || routeLoading)}
+          focusLocationId={null}
         />
       </div>
 
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
+      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none md:right-auto md:w-full md:max-w-md">
         <div className="pointer-events-auto">
           <MapLocationSearch
             locations={locations}
@@ -226,7 +319,7 @@ export function MapScreen() {
                 data-testid="location-try-again"
                 disabled={locationLoading}
                 className="rounded-lg bg-amber-900 px-2.5 py-1.5 text-xs font-medium text-amber-50 disabled:opacity-60"
-                onClick={() => void requestLocation()}
+                onClick={() => void requestLocation(true)}
               >
                 {locationLoading ? "Checking…" : "Try again"}
               </button>
@@ -275,10 +368,21 @@ export function MapScreen() {
         </div>
       </div>
 
-      {showRouteCard && (
+      {directionsJob && !activeRoute && !showRouteCard && (
+        <div
+          className="absolute left-4 right-4 z-20 rounded-xl bg-card px-3 py-2.5 text-sm shadow-lg border border-border"
+          style={{ bottom: overlayBottom }}
+          data-testid="directions-status"
+          role="status"
+        >
+          {directionsJob.error ?? "Getting directions…"}
+        </div>
+      )}
+
+      {showRouteCard && !activeQueue && (
         <div
           className="absolute left-4 right-4 z-20"
-          style={{ bottom: ABOVE_BOTTOM_NAV }}
+          style={{ bottom: overlayBottom }}
         >
           <RouteSummaryCard
             route={activeRoute?.route ?? null}
@@ -310,7 +414,8 @@ export function MapScreen() {
       <JoinQueueDrawer
         open={joinDrawerOpen}
         location={selectedLocation}
-        showDirections={Boolean(userLocation) && !activeRoute}
+        showDirections={!activeRoute}
+        directionsBusy={routeLoading}
         onDirections={handleDirections}
         onOpenChange={(open) => {
           setJoinDrawerOpen(open)

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useApp } from "@/lib/app-context"
-import { apiFetch } from "@/lib/api-client"
+import { apiFetch, formatApiErrorMessage } from "@/lib/api-client"
 import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
 import { UserAvatar } from "@/components/qflow/user-avatar"
@@ -71,7 +71,7 @@ export function ProfileScreen() {
       })
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
-        setDeleteError(body.error ?? t.deleteAccountError)
+        setDeleteError(formatApiErrorMessage(body, t.deleteAccountError))
         return
       }
       setShowDeleteAccountDialog(false)
@@ -378,27 +378,30 @@ export function ProfileScreen() {
               <p className="text-sm text-destructive mb-4">{deleteError}</p>
             )}
 
-            <Button 
-              variant="destructive"
-              onClick={handleDeleteAccount}
-              disabled={deleteConfirmText !== "DELETE" || isDeleting}
-              className={cn(
-                "w-full h-11 mb-3",
-                (deleteConfirmText !== "DELETE" || isDeleting) && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {isDeleting ? t.deleting : t.permanentlyDeleteAccount}
-            </Button>
-            <button
-              onClick={() => {
-                setShowDeleteAccountDialog(false)
-                setDeleteConfirmText("")
-                setDeleteError(null)
-              }}
-              className="w-full text-center text-muted-foreground hover:text-foreground transition-colors py-2"
-            >
-              {t.cancel}
-            </button>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteAccountDialog(false)
+                  setDeleteConfirmText("")
+                  setDeleteError(null)
+                }}
+                className="flex-1 h-11"
+              >
+                {t.cancel}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmText !== "DELETE" || isDeleting}
+                className={cn(
+                  "flex-1 h-11",
+                  (deleteConfirmText !== "DELETE" || isDeleting) && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {isDeleting ? t.deleting : t.permanentlyDeleteAccount}
+              </Button>
+            </div>
           </div>
         </div>
       )}

@@ -274,6 +274,8 @@ interface AppContextType {
 
   // Data
   locations: Location[]
+  /** False until the first public locations fetch finishes. */
+  locationsReady: boolean
   notifications: Notification[]
   queueHistory: QueueHistoryItem[]
   lastSyncedAt: Date | null
@@ -381,6 +383,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [editingLocation, setEditingLocation] = useState<Location | null>(null)
   const [activeQueue, setActiveQueue] = useState<QueueEntry | null>(null)
   const [locations, setLocations] = useState<Location[]>([])
+  const [locationsReady, setLocationsReady] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [queueHistory, setQueueHistory] = useState<QueueHistoryItem[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
@@ -476,9 +479,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let path = pathForScreen(allowed, selectedLocationRef.current?.id)
       const blocked = pathAllowedForRole(path, currentUserRef.current?.role)
       if (blocked) path = blocked
-      startTransition(() => {
-        router.push(path)
-      })
+      router.push(path)
     },
     [router]
   )
@@ -523,15 +524,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const loadLocations = useCallback(async () => {
-    if (!supabase) return
-    const { data, error } = await supabase
-      .from("locations")
-      .select("*")
-      .order("name")
+    try {
+      if (!supabase) return
+      const { data, error } = await supabase
+        .from("locations")
+        .select("*")
+        .order("name")
 
-    if (!error && data) {
-      setLocations(data.map(mapDbLocation))
-      setLastSyncedAt(new Date())
+      if (!error && data) {
+        setLocations(data.map(mapDbLocation))
+        setLastSyncedAt(new Date())
+      }
+    } finally {
+      setLocationsReady(true)
     }
   }, [supabase])
 
@@ -2722,6 +2727,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       submitVisitRating,
       skipVisitRating,
       locations,
+      locationsReady,
       notifications,
       queueHistory,
       lastSyncedAt,

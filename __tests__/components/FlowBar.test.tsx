@@ -1,9 +1,11 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { detectUserLocation } from "@/lib/map-geolocation"
 import { createAppMock, mockUseT, sampleLocation } from "../helpers/mock-app"
 import type { QueueEntry } from "@/lib/app-context"
 
 const leaveQueue = jest.fn()
+const navigateTo = jest.fn()
 
 function queueEntry(overrides: Partial<QueueEntry> = {}): QueueEntry {
   return {
@@ -41,7 +43,8 @@ jest.mock("@/lib/app-context", () => ({
       selectedLocation: sampleLocation,
       locations: [sampleLocation],
       joinQueue: jest.fn(),
-      navigateTo: jest.fn(),
+      navigateTo,
+      setSelectedLocation: jest.fn(),
     }),
 }))
 jest.mock("@/components/qflow/offline-banner", () => ({
@@ -52,12 +55,14 @@ jest.mock("@/lib/map-geolocation", () => ({
     ok: true,
     coords: { lat: -26.18, lng: 28.04, accuracyMeters: 25 },
   })),
+  subscribeBetterFix: jest.fn(() => () => {}),
 }))
 jest.mock("@/lib/mapbox-directions", () => ({
-  fetchMapboxRoute: jest.fn(),
+  fetchMapboxRoute: jest.fn(async () => ({ ok: false, error: "No route" })),
   formatRouteDistance: (m: number) => `${m} m`,
   formatRouteDuration: (s: number) => `${Math.round(s / 60)} min walk`,
   googleMapsDirectionsUrl: () => "https://maps.example",
+  openDeviceMaps: jest.fn(),
 }))
 jest.mock("framer-motion", () => {
   const React = require("react")
@@ -119,6 +124,7 @@ jest.mock("framer-motion", () => {
 import { FlowBar } from "@/components/qflow/flow-bar"
 import {
   __resetActiveRouteStoreForTests,
+  getDirectionsJob,
   setActiveRoute,
 } from "@/lib/active-route-store"
 
@@ -153,6 +159,7 @@ describe("FlowBar", () => {
     await user.click(screen.getByTestId("flow-bar"))
     expect(await screen.findByTestId("flow-bar-expanded")).toBeInTheDocument()
     expect(screen.getByTestId("join-queue-panel")).toBeInTheDocument()
+    expect(screen.getByTestId("ask-qflow-toggle")).toBeInTheDocument()
 
     await user.click(screen.getByLabelText(/close queue details/i))
     expect(await screen.findByTestId("flow-bar")).toBeInTheDocument()
@@ -166,9 +173,38 @@ describe("FlowBar", () => {
     await user.click(screen.getByTestId("flow-bar"))
     expect(await screen.findByTestId("directions-button")).toBeInTheDocument()
     expect(screen.queryByTestId("route-summary-card")).not.toBeInTheDocument()
+    await user.click(screen.getByTestId("directions-button"))
+    expect(navigateTo).toHaveBeenCalledWith("map")
   })
 
-  it("shows a compact route card above the pill when a route is active", async () => {
+  it("opens the map before a slow location fix resolves", async () => {
+    let resolveGeo: (value: unknown) => void = () => {}
+    ;(detectUserLocation as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveGeo = resolve
+        })
+    )
+    const user = userEvent.setup()
+    activeQueue = queueEntry()
+    navigateTo.mockClear()
+    render(<FlowBar />)
+    await user.click(screen.getByTestId("flow-bar"))
+    expect(await screen.findByTestId("directions-button")).toBeInTheDocument()
+
+    const started = Date.now()
+    await user.click(screen.getByTestId("directions-button"))
+    expect(navigateTo).toHaveBeenCalledWith("map")
+    expect(getDirectionsJob()?.locationId).toBe(sampleLocation.id)
+    expect(Date.now() - started).toBeLessThan(800)
+
+    resolveGeo({
+      ok: true,
+      coords: { lat: -26.18, lng: 28.04, accuracyMeters: 25 },
+    })
+  })
+
+  it("shows the walk on the queue bar when a route is active", async () => {
     activeQueue = queueEntry()
     setActiveRoute({
       queueEntryId: "qe-1",
@@ -188,10 +224,11 @@ describe("FlowBar", () => {
       },
     })
     render(<FlowBar />)
-    const card = screen.getByTestId("route-summary-card")
-    expect(card).toHaveAttribute("data-compact", "true")
-    expect(screen.getByTestId("flow-bar")).toBeInTheDocument()
-    expect(screen.getByText("1200 m")).toBeInTheDocument()
+    const bar = screen.getByTestId("flow-bar")
+    expect(bar).toHaveTextContent("1200 m")
+    expect(bar).toHaveTextContent("15 min walk")
+    expect(screen.queryByTestId("route-summary-card")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Walk" })).toBeInTheDocument()
   })
 
   it("shows distance/ETA in expanded state when a route is active", async () => {
@@ -216,9 +253,10 @@ describe("FlowBar", () => {
     })
     render(<FlowBar />)
     await user.click(screen.getByTestId("flow-bar"))
-    expect(await screen.findByTestId("route-summary-card")).toBeInTheDocument()
+    expect(await screen.findByTestId("flow-bar-expanded")).toBeInTheDocument()
     expect(screen.getByText("1200 m")).toBeInTheDocument()
-    expect(screen.queryByTestId("directions-button")).not.toBeInTheDocument()
+    await user.click(screen.getByTestId("directions-button"))
+    expect(navigateTo).toHaveBeenCalledWith("map")
   })
 
   it("applies emergency variant class", () => {

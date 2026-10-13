@@ -19,7 +19,7 @@ function QFlowErrorLogo() {
 
 function ErrorFallback() {
   return (
-    <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col items-center justify-center px-8 text-center">
+    <div className="min-h-screen bg-background max-w-qflow mx-auto flex flex-col items-center justify-center px-8 text-center">
       <QFlowErrorLogo />
       <h1 className="text-xl font-semibold text-foreground mb-2">
         Something went wrong

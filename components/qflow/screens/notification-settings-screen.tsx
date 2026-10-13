@@ -235,7 +235,7 @@ export function NotificationSettingsScreen() {
 
       {showSavedToast && (
         <div
-          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl bg-[#10B981] p-4 text-white shadow-lg animate-in slide-in-from-bottom"
+          className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-qflow -translate-x-1/2 rounded-xl bg-[#10B981] p-4 text-white shadow-lg animate-in slide-in-from-bottom"
           style={{ bottom: paddingBottom }}
           data-testid="notif-saved-toast"
         >

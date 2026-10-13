@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <SessionProvider>
         <ServerOutageProvider>
           <HighContrastProvider>
-            <div className="min-h-dvh bg-background max-w-md mx-auto relative overflow-hidden shadow-2xl">
+            <div className="relative mx-auto min-h-dvh w-full max-w-qflow bg-background">
               <ServerOutageBanner />
               <Suspense fallback={null}>
                 <RoutePersistence />

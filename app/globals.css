@@ -42,6 +42,8 @@
   --sidebar-accent-foreground: #1E293B;
   --sidebar-border: #E2E8F0;
   --sidebar-ring: #2563EB;
+  /* Phone widths fill the screen. Larger screens grow one centered column. */
+  --qflow-frame: 100%;
 }
 
 .dark {
@@ -146,6 +148,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+  --max-width-qflow: var(--qflow-frame);
 }
 
 @layer base {
@@ -156,6 +159,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* The app frame is the full viewport on every device. */
 
 /* Session banner slide animation */
 @keyframes slide-down {

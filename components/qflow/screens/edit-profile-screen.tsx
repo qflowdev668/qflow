@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Camera, Loader2, Mail, User } from "lucide-react"
+import { Camera, Mail, User } from "lucide-react"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { useChromeInsets } from "@/hooks/use-chrome-insets"
@@ -169,10 +169,10 @@ export function EditProfileScreen() {
             >
               {avatarUploading && (
                 <span
-                  className="absolute inset-0 flex items-center justify-center bg-black/40"
+                  className="absolute inset-x-0 bottom-0 rounded-b-full bg-black/55 px-2 py-1 text-center text-[10px] font-semibold text-white"
                   data-testid="avatar-uploading"
                 >
-                  <Loader2 className="h-8 w-8 animate-spin text-white" />
+                  {t.saving}
                 </span>
               )}
               {!avatarUploading && (

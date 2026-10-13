@@ -88,6 +88,8 @@ type JoinQueuePanelProps = {
   /** Show Directions when user geolocation is available (map flow). */
   showDirections?: boolean
   onDirections?: () => void
+  /** Disables the button and shows progress while the route is calculated. */
+  directionsBusy?: boolean
   onJoined?: () => void
   onLeft?: () => void
   onViewQueue?: () => void
@@ -103,6 +105,7 @@ export function JoinQueuePanel({
   useRollerDigits = false,
   showDirections = false,
   onDirections,
+  directionsBusy = false,
   onJoined,
   onLeft,
   onViewQueue,
@@ -125,6 +128,7 @@ export function JoinQueuePanel({
   const [priority, setPriority] = useState<PriorityCategory>(null)
   const [showPriority, setShowPriority] = useState(false)
   const [joining, setJoining] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   useEffect(() => {
     if (isActiveMode) return
@@ -152,8 +156,18 @@ export function JoinQueuePanel({
   const isClosed = loc ? !loc.isOpen : true
   const alreadyHere = Boolean(activeQueue && loc && activeQueue.locationId === loc.id)
   const inOtherLine = Boolean(activeQueue && loc && activeQueue.locationId !== loc.id)
+  const canLeaveToJoin =
+    inOtherLine &&
+    activeQueue?.status !== "your-turn" &&
+    activeQueue?.status !== "serving"
   const canJoin = Boolean(
-    loc && !isOffline && !isFull && !isClosed && !alreadyHere && !inOtherLine && !joining
+    loc &&
+      !isOffline &&
+      !isFull &&
+      !isClosed &&
+      !alreadyHere &&
+      !joining &&
+      (!inOtherLine || canLeaveToJoin)
   )
 
   const handleJoin = async () => {
@@ -175,6 +189,8 @@ export function JoinQueuePanel({
   }
 
   const handleLeave = () => {
+    if (leaving) return
+    setLeaving(true)
     leaveQueue()
     onLeft?.()
   }
@@ -199,17 +215,17 @@ export function JoinQueuePanel({
   )
 
   return (
-    <div className={cn("space-y-3", className)} data-testid="join-queue-panel">
+    <div className={cn("space-y-5", className)} data-testid="join-queue-panel">
       {(loc || isActiveMode) && (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-muted/70 px-3 py-2.5">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-muted/70 px-4 py-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="w-3.5 h-3.5" />
               {t.estimatedWait}
             </div>
             {WaitValue}
           </div>
-          <div className="rounded-xl bg-muted/70 px-3 py-2.5">
+          <div className="rounded-xl bg-muted/70 px-4 py-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Users className="w-3.5 h-3.5" />
               {t.peopleAheadShort}
@@ -219,16 +235,18 @@ export function JoinQueuePanel({
         </div>
       )}
 
-      {showDirections && loc && onDirections && (
+      {showDirections && onDirections && (loc || isActiveMode) && (
         <Button
           type="button"
           variant="outline"
           data-testid="directions-button"
+          onPointerDown={(event) => event.stopPropagation()}
+          disabled={directionsBusy}
           onClick={onDirections}
-          className="w-full h-11 rounded-xl border-primary/30 text-primary"
+          className="w-full h-14 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 border-0 text-base font-semibold"
         >
           <Navigation className="w-4 h-4 mr-2" />
-          {t.getDirections}
+          {directionsBusy ? "Getting directions…" : t.getDirections}
         </Button>
       )}
 
@@ -345,10 +363,10 @@ export function JoinQueuePanel({
           <Button
             className="w-full h-14 text-base font-semibold rounded-xl border-2 border-[#EF4444] bg-transparent text-[#EF4444] hover:bg-red-50"
             variant="outline"
-            disabled={isOffline}
+            disabled={isOffline || leaving}
             onClick={handleLeave}
           >
-            {t.leaveQueue}
+            {leaving ? t.saving : t.leaveQueue}
           </Button>
         ) : alreadyHere ? (
           <Button
@@ -372,11 +390,13 @@ export function JoinQueuePanel({
           >
             {joining
               ? "Joining…"
-              : isEmergency
-                ? t.joinAsEmergency
-                : isFastTrack
-                  ? t.joinAsPriority
-                  : t.joinQueue}
+              : canLeaveToJoin
+                ? t.leaveCurrentJoinHere
+                : isEmergency
+                  ? t.joinAsEmergency
+                  : isFastTrack
+                    ? t.joinAsPriority
+                    : t.joinQueue}
           </Button>
         )}
       </div>

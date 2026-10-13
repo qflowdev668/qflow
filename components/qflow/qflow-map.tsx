@@ -7,11 +7,13 @@
  * when brand styling moves out of runtime setPaintProperty tweaks.
  * Fast-follow: design a Studio style (water/roads/labels) instead of paint overrides.
  */
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import mapboxgl from "mapbox-gl"
 import "mapbox-gl/dist/mapbox-gl.css"
 import type { Location } from "@/lib/app-context"
 import { getMapPinCapacityInfo } from "@/lib/capacity-i18n"
+import { serviceIconSrc } from "@/lib/service-icons"
+import { withExactDestination } from "@/lib/mapbox-directions"
 import type { TranslationKeys } from "@/lib/i18n"
 import type { GeoCoords } from "@/lib/map-geolocation"
 import { LOW_ACCURACY_METERS, accuracyCirclePolygon } from "@/lib/map-geolocation"
@@ -23,6 +25,7 @@ export const DEFAULT_CENTER: [number, number] = [28.0473, -26.2041] // Johannesb
 const DEFAULT_ZOOM = 11
 
 const ROUTE_SOURCE_ID = "qflow-route"
+const ROUTE_CASING_ID = "qflow-route-casing"
 const ROUTE_LAYER_ID = "qflow-route-line"
 const ACCURACY_SOURCE_ID = "qflow-accuracy"
 const ACCURACY_LAYER_ID = "qflow-accuracy-fill"
@@ -71,6 +74,7 @@ function createPinElement(opts: {
   pulsing: boolean
   locationId: string
   name: string
+  iconSrc: string
 }): HTMLElement {
   const size = opts.selected ? 48 : 36
   const el = document.createElement("button")
@@ -111,25 +115,22 @@ function createPinElement(opts: {
     `width:${opts.selected ? 40 : 32}px`,
     `height:${opts.selected ? 40 : 32}px`,
     "border-radius:9999px",
-    `background:${opts.selected ? "#2563EB" : opts.color}`,
+    "background:#fff",
+    `border:3px solid ${opts.selected ? "#2563EB" : opts.color}`,
     "box-shadow:0 2px 8px rgba(15,23,42,0.25)",
     "display:flex",
-    "align-items:flex-start",
+    "align-items:center",
     "justify-content:center",
-    "padding-top:6px",
+    "overflow:hidden",
     "position:relative",
     "z-index:1",
   ].join(";")
 
-  const dot = document.createElement("span")
-  dot.style.cssText = [
-    "width:12px",
-    "height:12px",
-    "border-radius:9999px",
-    "background:#fff",
-    "display:block",
-  ].join(";")
-  outer.appendChild(dot)
+  const icon = document.createElement("img")
+  icon.src = opts.iconSrc
+  icon.alt = ""
+  icon.style.cssText = "width:78%;height:78%;object-fit:contain;display:block;pointer-events:none;"
+  outer.appendChild(icon)
   el.appendChild(outer)
   return el
 }
@@ -203,15 +204,23 @@ function setAccuracyCircle(map: mapboxgl.Map, userLocation: GeoCoords | null) {
 
 function clearRouteLayers(map: mapboxgl.Map) {
   if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID)
+  if (map.getLayer(ROUTE_CASING_ID)) map.removeLayer(ROUTE_CASING_ID)
   if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID)
 }
 
-function setRouteOnMap(map: mapboxgl.Map, geometry: GeoJSON.LineString | null) {
+function setRouteOnMap(
+  map: mapboxgl.Map,
+  geometry: GeoJSON.LineString | null,
+  preview = false
+) {
   clearRouteLayers(map)
-  if (!geometry?.coordinates?.length) return
+  if (!geometry || geometry.coordinates.length < 2) return
 
   map.addSource(ROUTE_SOURCE_ID, {
     type: "geojson",
+    // Default simplification drops the short last leg from the road to the door
+    // once the camera is framed on a long walk.
+    tolerance: 0,
     data: { type: "Feature", properties: {}, geometry },
   })
   map.addLayer({
@@ -224,8 +233,9 @@ function setRouteOnMap(map: mapboxgl.Map, geometry: GeoJSON.LineString | null) {
     },
     paint: {
       "line-color": "#2563EB",
-      "line-width": 5,
-      "line-opacity": 0.9,
+      "line-width": preview ? 4 : 5,
+      "line-opacity": 1,
+      ...(preview ? { "line-dasharray": [1.4, 1.2] } : {}),
     },
   })
 }
@@ -243,8 +253,12 @@ export type QflowMapProps = {
   centerOnUserToken?: string | number | null
   /** GeoJSON line from Mapbox Directions — replaces any previous route. */
   routeGeometry?: GeoJSON.LineString | null
+  /** Exact place coordinates. Kept in frame even if the road snap stops short. */
+  routeEnd?: { lng: number; lat: number } | null
   /** When true, pin updates do not auto-fit the camera (route view owns it). */
   lockCamera?: boolean
+  /** Fly straight to this place while a route is still calculating. */
+  focusLocationId?: string | null
 }
 
 export function QflowMap({
@@ -256,10 +270,14 @@ export function QflowMap({
   userLocation = null,
   centerOnUserToken = null,
   routeGeometry = null,
+  routeEnd = null,
   lockCamera = false,
+  focusLocationId = null,
 }: QflowMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
+  const fitRouteRef = useRef<(() => void) | null>(null)
+  const [styleReady, setStyleReady] = useState(false)
   const markersRef = useRef<mapboxgl.Marker[]>([])
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null)
   const lastUserCenterToken = useRef<string | number | null>(null)
@@ -286,16 +304,25 @@ export function QflowMap({
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right")
 
+    let resizing = false
     const resize = () => {
+      if (resizing) return
+      resizing = true
       try {
         map.resize()
+        // The first route often arrives before the canvas has a real size.
+        // Fit once that size exists. fit() itself ignores repeat calls.
+        fitRouteRef.current?.()
       } catch {
         /* map may already be removed */
+      } finally {
+        resizing = false
       }
     }
 
     map.on("load", () => {
       applyQflowBrandPaint(map)
+      setStyleReady(true)
       resize()
     })
 
@@ -313,8 +340,10 @@ export function QflowMap({
       markersRef.current = []
       userMarkerRef.current?.remove()
       userMarkerRef.current = null
+      fitRouteRef.current = null
       map.remove()
       mapRef.current = null
+      setStyleReady(false)
     }
   }, [token])
 
@@ -338,6 +367,7 @@ export function QflowMap({
         pulsing: capacityInfo.pulsing,
         locationId: loc.id,
         name: loc.name,
+        iconSrc: serviceIconSrc(loc.type, loc.name),
       })
       el.addEventListener("click", (e) => {
         e.stopPropagation()
@@ -350,9 +380,23 @@ export function QflowMap({
       markersRef.current.push(marker)
     }
 
-    if (lockCamera || withCoords.length === 0) return
+    // A route (or a destination we're already routing to) owns the camera.
+    // Fitting every pin here is what snaps the map back to the whole city.
+    if (lockCamera || routeEnd || withCoords.length === 0) return
 
     const reduceMotion = prefersReducedMotion()
+    const focus = focusLocationId
+      ? withCoords.find((loc) => loc.id === focusLocationId)
+      : null
+    if (focus) {
+      const center: [number, number] = [focus.coordinates.lng, focus.coordinates.lat]
+      if (reduceMotion) {
+        map.jumpTo({ center, zoom: 14 })
+      } else {
+        map.flyTo({ center, zoom: 14, essential: true })
+      }
+      return
+    }
     if (withCoords.length === 1) {
       const loc = withCoords[0]
       const center: [number, number] = [loc.coordinates.lng, loc.coordinates.lat]
@@ -374,7 +418,7 @@ export function QflowMap({
       duration: reduceMotion ? 0 : 800,
       essential: true,
     })
-  }, [locations, selectedLocationId, t, token, focusToken, lockCamera])
+  }, [locations, selectedLocationId, t, token, focusToken, lockCamera, focusLocationId, routeEnd])
 
   useEffect(() => {
     const map = mapRef.current
@@ -407,7 +451,8 @@ export function QflowMap({
     if (
       centerOnUserToken != null &&
       centerOnUserToken !== lastUserCenterToken.current &&
-      !lockCamera
+      !lockCamera &&
+      !routeEnd
     ) {
       lastUserCenterToken.current = centerOnUserToken
       const reduceMotion = prefersReducedMotion()
@@ -417,34 +462,86 @@ export function QflowMap({
         map.flyTo({ center: lngLat, zoom: Math.max(map.getZoom(), 13), essential: true })
       }
     }
-  }, [userLocation, centerOnUserToken, token, lockCamera])
+  }, [userLocation, centerOnUserToken, token, lockCamera, routeEnd])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map || !token) return
 
-    const apply = () => {
-      setRouteOnMap(map, routeGeometry ?? null)
-      if (!routeGeometry?.coordinates?.length) return
+    if (!styleReady && !map.isStyleLoaded()) return
 
-      const bounds = new mapboxgl.LngLatBounds()
-      for (const coord of routeGeometry.coordinates) {
-        bounds.extend(coord as [number, number])
+    const routeCoords = routeGeometry?.coordinates ?? []
+    const hasRoute = routeCoords.length >= 2
+    const preview =
+      !hasRoute &&
+      Boolean(userLocation) &&
+      Boolean(routeEnd) &&
+      Number.isFinite(userLocation?.lng) &&
+      Number.isFinite(userLocation?.lat) &&
+      Number.isFinite(routeEnd?.lng) &&
+      Number.isFinite(routeEnd?.lat)
+    const geometry: GeoJSON.LineString | null = hasRoute
+      ? {
+          type: "LineString",
+          coordinates: routeEnd
+            ? withExactDestination(routeCoords, routeEnd)
+            : routeCoords,
+        }
+      : preview && userLocation && routeEnd
+        ? {
+            type: "LineString",
+            coordinates: [
+              [userLocation.lng, userLocation.lat],
+              [routeEnd.lng, routeEnd.lat],
+            ],
+          }
+        : null
+    setRouteOnMap(map, geometry, preview)
+
+    const points: [number, number][] = []
+    for (const coord of geometry?.coordinates ?? []) {
+      if (coord.length >= 2 && Number.isFinite(coord[0]) && Number.isFinite(coord[1])) {
+        points.push([coord[0], coord[1]])
       }
+    }
+    if (
+      userLocation &&
+      Number.isFinite(userLocation.lng) &&
+      Number.isFinite(userLocation.lat)
+    ) {
+      points.push([userLocation.lng, userLocation.lat])
+    }
+    if (routeEnd && Number.isFinite(routeEnd.lng) && Number.isFinite(routeEnd.lat)) {
+      points.push([routeEnd.lng, routeEnd.lat])
+    }
+    if (!points.length) {
+      fitRouteRef.current = null
+      return
+    }
+
+    let framed = false
+    const fit = () => {
+      if (framed) return
+      const bounds = new mapboxgl.LngLatBounds()
+      for (const point of points) bounds.extend(point)
+      const container = map.getContainer?.()
+      const width = container?.clientWidth ?? 0
+      const height = container?.clientHeight ?? 0
+      if (container && (width < 32 || height < 32)) return
+      framed = true
+      // Cancel any pin fly or city-wide fit still in progress. If that
+      // animation finishes after the route, the line is off screen.
+      map.stop?.()
       map.fitBounds(bounds, {
-        padding: { top: 100, bottom: 220, left: 48, right: 48 },
-        maxZoom: 15,
+        padding: { top: 96, bottom: 200, left: 48, right: 48 },
+        maxZoom: 16,
         duration: prefersReducedMotion() ? 0 : 700,
         essential: true,
       })
     }
-
-    if (map.isStyleLoaded()) {
-      apply()
-    } else {
-      map.once("load", apply)
-    }
-  }, [routeGeometry, token])
+    fitRouteRef.current = fit
+    fit()
+  }, [routeGeometry, routeEnd, userLocation, token, styleReady])
 
   if (!token) {
     return (

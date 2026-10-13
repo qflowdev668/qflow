@@ -43,6 +43,20 @@ function redirectToLoginPreservingReturnUrl(): void {
   window.location.assign(qs ? `/login?${qs}` : "/login")
 }
 
+/** Hide stack traces, SQL, and storage internals from customer-facing copy. */
+const TECHNICAL_ERROR =
+  /traceback|stack trace|typeerror|referenceerror|syntaxerror|internal server error|bucket not found|sqlstate|postgres|econn|requestid|cannot read propert|null reference|\bat\s+\S+\s*\(/i
+
+function safeUserMessage(text: string, fallback: string): string {
+  const trimmed = text.trim()
+  if (!trimmed || trimmed.length > 180) return fallback
+  if (trimmed.includes("\n") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return fallback
+  }
+  if (TECHNICAL_ERROR.test(trimmed)) return fallback
+  return trimmed
+}
+
 /** Pull a human-readable message from FastAPI / JSON error bodies. */
 export function formatApiErrorMessage(
   payload: unknown,
@@ -57,32 +71,42 @@ export function formatApiErrorMessage(
   }
 
   const fromDetail = (detail: unknown): string | null => {
-    if (typeof detail === "string" && detail.trim()) return detail.trim()
+    if (typeof detail === "string" && detail.trim()) return safeUserMessage(detail, fallback)
     if (Array.isArray(detail) && detail.length > 0) {
       const parts = detail
         .map((item) => {
-          if (typeof item === "string") return item
+          if (typeof item === "string") return safeUserMessage(item, "")
           if (item && typeof item === "object" && "msg" in item) {
-            return String((item as { msg: unknown }).msg)
+            return safeUserMessage(String((item as { msg: unknown }).msg), "")
           }
-          return null
+          return ""
         })
         .filter(Boolean)
       if (parts.length) return parts.join("; ")
     }
     if (detail && typeof detail === "object") {
       const nested = detail as { error?: unknown; message?: unknown; msg?: unknown }
-      if (typeof nested.error === "string" && nested.error.trim()) return nested.error.trim()
-      if (typeof nested.message === "string" && nested.message.trim()) return nested.message.trim()
-      if (typeof nested.msg === "string" && nested.msg.trim()) return nested.msg.trim()
+      if (typeof nested.error === "string" && nested.error.trim()) {
+        return safeUserMessage(nested.error, fallback)
+      }
+      if (typeof nested.message === "string" && nested.message.trim()) {
+        return safeUserMessage(nested.message, fallback)
+      }
+      if (typeof nested.msg === "string" && nested.msg.trim()) {
+        return safeUserMessage(nested.msg, fallback)
+      }
     }
     return null
   }
 
-  if (typeof body.error === "string" && body.error.trim()) return body.error.trim()
+  if (typeof body.error === "string" && body.error.trim()) {
+    return safeUserMessage(body.error, fallback)
+  }
   const detailMsg = fromDetail(body.detail)
   if (detailMsg) return detailMsg
-  if (typeof body.message === "string" && body.message.trim()) return body.message.trim()
+  if (typeof body.message === "string" && body.message.trim()) {
+    return safeUserMessage(body.message, fallback)
+  }
   return fallback
 }
 

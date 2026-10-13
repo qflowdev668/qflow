@@ -17,6 +17,7 @@ const mockFetchMapboxRoute = jest.fn()
 
 jest.mock("@/lib/map-geolocation", () => ({
   detectUserLocation: (...args: unknown[]) => mockDetectUserLocation(...args),
+  subscribeBetterFix: jest.fn(() => () => {}),
   locationBannerMessage: (reason: string) =>
     reason === "denied"
       ? "Location is blocked. Use the lock icon in the address bar → Site settings → Location → Allow, then tap Try again."
@@ -114,6 +115,7 @@ jest.mock("@/lib/mapbox-directions", () => ({
   formatRouteDistance: (m: number) => `${m} m`,
   formatRouteDuration: (s: number) => `${Math.round(s / 60)} min walk`,
   googleMapsDirectionsUrl: () => "https://maps.example",
+  openDeviceMaps: jest.fn(),
 }))
 
 const mockQflowMapProps: { current: Record<string, unknown> } = { current: {} }
@@ -239,10 +241,11 @@ describe("MapScreen geolocation", () => {
       expect(mockQflowMapProps.current.routeGeometry).toBeTruthy()
     })
 
-    fireEvent.click(screen.getByTestId("close-join-drawer"))
     expect(screen.queryByTestId("join-drawer")).toBeNull()
     expect(getActiveRoute()?.locationId).toBe("loc-1")
     expect(mockQflowMapProps.current.routeGeometry).toBeTruthy()
+    expect(mockQflowMapProps.current.lockCamera).toBe(true)
+    expect(mockQflowMapProps.current.focusLocationId).toBeNull()
   })
 
   it("clears the route when the queue entry is no longer active", () => {

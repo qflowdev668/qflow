@@ -61,7 +61,7 @@ async def join_queue(
             {
                 "user_id": f"eq.{user_id}",
                 "status": f"in.({ACTIVE_STATUSES})",
-                "select": "id,location_id",
+                "select": "id,location_id,status",
                 "limit": "1",
             },
         )
@@ -79,12 +79,28 @@ async def join_queue(
         raise HTTPException(status_code=409, detail="This location is closed.")
 
     if existing:
-        if existing[0].get("location_id") == location_id:
+        current = existing[0]
+        if str(current.get("location_id") or "") == location_id:
             raise HTTPException(status_code=409, detail="You are already in this queue.")
-        raise HTTPException(
-            status_code=409,
-            detail="You are already in another queue. Leave it first.",
+        status = str(current.get("status") or "")
+        if status in ("your-turn", "serving"):
+            raise HTTPException(
+                status_code=409,
+                detail="You cannot leave the line while being served.",
+            )
+        cleared = await rest_patch(
+            "queue_entries",
+            {
+                "id": f"eq.{current.get('id')}",
+                "status": "in.(waiting,almost)",
+            },
+            {"status": "cancelled"},
         )
+        if not cleared:
+            raise HTTPException(
+                status_code=409,
+                detail="You cannot leave the line while being served.",
+            )
 
     try:
         entry = await rest_insert(

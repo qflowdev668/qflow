@@ -36,8 +36,10 @@ export function QFlowMark({
   return (
     <svg
       viewBox="0 0 48 48"
+      width="48"
+      height="48"
       fill="none"
-      className={cn("w-full h-full", className)}
+      className={cn("h-full w-full max-h-full max-w-full", className)}
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
@@ -86,7 +88,7 @@ export function QFlowLogo({
     <div className={cn("flex flex-col", showWordmark && "items-center", className)}>
       <div
         className={cn(
-          "relative flex items-center justify-center rounded-3xl",
+          "relative flex shrink-0 items-center justify-center overflow-hidden rounded-3xl",
           variant === "solid" && "bg-primary text-primary-foreground shadow-lg shadow-primary/25",
           variant === "frosted" && "bg-white/20 backdrop-blur-sm",
           sizes[size],
