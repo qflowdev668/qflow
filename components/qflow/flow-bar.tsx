@@ -377,7 +377,7 @@ export function FlowBar() {
                       routeForThisQueue.route.profile
                     )}
                   </p>
-                ) : directionsJob?.locationId === queueLocation?.id ? (
+                ) : directionsJob && directionsJob.locationId === queueLocation?.id ? (
                   <p className="truncate text-[13px] leading-tight text-white/90">
                     {directionsJob.error ?? "Getting directions…"}
                   </p>

@@ -116,6 +116,7 @@ describe("MVP customer journeys", () => {
       estimatedWait: 12,
       status: "waiting",
       joinedAt: new Date(),
+      priorityType: "standard",
     }
     render(<MyQueueScreen />)
     fireEvent.click(screen.getByRole("button", { name: t.leaveQueue }))
