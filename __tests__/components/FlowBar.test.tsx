@@ -80,18 +80,20 @@ jest.mock("framer-motion", () => {
     dragElastic?: unknown
     onDragEnd?: unknown
   }) => {
-    const {
-      layoutId: _l,
-      initial: _i,
-      animate: _a,
-      exit: _e,
-      transition: _t,
-      drag: _d,
-      dragConstraints: _dc,
-      dragElastic: _de,
-      onDragEnd: _ode,
-      ...rest
-    } = props
+    const rest = { ...props }
+    for (const key of [
+      "layoutId",
+      "initial",
+      "animate",
+      "exit",
+      "transition",
+      "drag",
+      "dragConstraints",
+      "dragElastic",
+      "onDragEnd",
+    ] as const) {
+      delete rest[key]
+    }
     return <div {...rest}>{children}</div>
   }
   return {

@@ -4,12 +4,14 @@
 import { render, screen, fireEvent } from "@testing-library/react"
 import { JoinQueuePanel } from "@/components/qflow/join-queue-panel"
 
-var mockActiveQueue: {
-  locationId: string
-  locationName: string
-  position: number
-  status: string
-} | null = null
+const mockActiveQueue: {
+  current: {
+    locationId: string
+    locationName: string
+    position: number
+    status: string
+  } | null
+} = { current: null }
 
 jest.mock("@/lib/app-context", () => ({
   useApp: () => ({
@@ -18,7 +20,7 @@ jest.mock("@/lib/app-context", () => ({
     navigateTo: jest.fn(),
     selectedLocation: null,
     get activeQueue() {
-      return mockActiveQueue
+      return mockActiveQueue.current
     },
     authError: null,
     clearAuthError: jest.fn(),
@@ -83,11 +85,11 @@ const location = {
 
 describe("JoinQueuePanel switch lines", () => {
   afterEach(() => {
-    mockActiveQueue = null
+    mockActiveQueue.current = null
   })
 
   it("offers to leave the current line and join this place", () => {
-    mockActiveQueue = {
+    mockActiveQueue.current = {
       locationId: "loc-other",
       locationName: "ABSA Bank Sandton",
       position: 1,
