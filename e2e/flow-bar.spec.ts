@@ -17,16 +17,13 @@ test.describe("Flow Bar", () => {
     test.setTimeout(90_000)
 
     await page.goto("/home")
-    // Unauthenticated users are redirected to login — skip join path.
-    if (page.url().includes("/login")) {
-      test.skip(true, "Requires signed-in customer session to join a queue")
-      return
-    }
-
-    // Prefer opening join drawer from a location card if present.
     const joinTrigger = page.getByRole("button", { name: /join the line|join/i }).first()
-    if (!(await joinTrigger.isVisible().catch(() => false))) {
-      test.skip(true, "No join control visible — seed locations / sign in first")
+    const outcome = await Promise.race([
+      page.waitForURL(/\/login/, { timeout: 15_000 }).then(() => "login" as const).catch(() => "timeout" as const),
+      joinTrigger.waitFor({ state: "visible", timeout: 15_000 }).then(() => "home" as const).catch(() => "timeout" as const),
+    ])
+    if (outcome !== "home") {
+      test.skip(true, "Requires signed-in customer session to join a queue")
       return
     }
 

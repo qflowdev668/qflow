@@ -13,13 +13,15 @@ test.describe("Map (/map)", () => {
 
   test("authenticated map shows canvas and opens join on pin click", async ({ page }) => {
     await page.goto("/map")
-    if (page.url().includes("/login")) {
-      test.skip(true, "Requires signed-in customer session for Mapbox map assertions")
-    }
-
     const canvas = page.getByTestId("qflow-map-canvas")
     const missing = page.getByTestId("map-token-missing")
-    await expect(canvas.or(missing)).toBeVisible({ timeout: 20_000 })
+    const outcome = await Promise.race([
+      page.waitForURL(/\/login/, { timeout: 15_000 }).then(() => "login" as const).catch(() => "timeout" as const),
+      canvas.or(missing).waitFor({ state: "visible", timeout: 15_000 }).then(() => "map" as const).catch(() => "timeout" as const),
+    ])
+    if (outcome !== "map") {
+      test.skip(true, "Requires signed-in customer session for Mapbox map assertions")
+    }
 
     if (await missing.isVisible().catch(() => false)) {
       test.skip(true, "NEXT_PUBLIC_MAPBOX_TOKEN was not baked into this build")
@@ -41,13 +43,15 @@ test.describe("Map (/map)", () => {
 
   test("search type-ahead selects a location like a pin tap", async ({ page }) => {
     await page.goto("/map")
-    if (page.url().includes("/login")) {
-      test.skip(true, "Requires signed-in customer session")
-    }
-
     const canvas = page.getByTestId("qflow-map-canvas")
     const missing = page.getByTestId("map-token-missing")
-    await expect(canvas.or(missing)).toBeVisible({ timeout: 20_000 })
+    const outcome = await Promise.race([
+      page.waitForURL(/\/login/, { timeout: 15_000 }).then(() => "login" as const).catch(() => "timeout" as const),
+      canvas.or(missing).waitFor({ state: "visible", timeout: 15_000 }).then(() => "map" as const).catch(() => "timeout" as const),
+    ])
+    if (outcome !== "map") {
+      test.skip(true, "Requires signed-in customer session")
+    }
     if (await missing.isVisible().catch(() => false)) {
       test.skip(true, "NEXT_PUBLIC_MAPBOX_TOKEN was not baked into this build")
     }

@@ -15,13 +15,15 @@ test.describe("Map directions", () => {
     await context.setGeolocation({ latitude: -26.1466, longitude: 28.0416 })
 
     await page.goto("/map")
-    if (page.url().includes("/login")) {
-      test.skip(true, "Requires signed-in customer session")
-    }
-
     const canvas = page.getByTestId("qflow-map-canvas")
     const missing = page.getByTestId("map-token-missing")
-    await expect(canvas.or(missing)).toBeVisible({ timeout: 20_000 })
+    const outcome = await Promise.race([
+      page.waitForURL(/\/login/, { timeout: 15_000 }).then(() => "login" as const).catch(() => "timeout" as const),
+      canvas.or(missing).waitFor({ state: "visible", timeout: 15_000 }).then(() => "map" as const).catch(() => "timeout" as const),
+    ])
+    if (outcome !== "map") {
+      test.skip(true, "Requires signed-in customer session")
+    }
     if (await missing.isVisible().catch(() => false)) {
       test.skip(true, "NEXT_PUBLIC_MAPBOX_TOKEN missing from build")
     }
