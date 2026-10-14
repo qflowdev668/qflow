@@ -42,7 +42,7 @@ export function AuthSplashOverlay() {
   const t = useT()
   const onCallback = isAuthCallbackPath(pathname)
   const [visible, setVisible] = useState(() => onCallback || authSplashIsActive())
-  const [homeCover, setHomeCover] = useState(true)
+  const [homeCover, setHomeCover] = useState(false)
   const [slow, setSlow] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const startedAt = useRef(0)
