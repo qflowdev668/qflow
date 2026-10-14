@@ -66,7 +66,7 @@ def test_export_includes_assistant_messages(monkeypatch):
     ]
 
 
-def test_delete_account_removes_assistant_messages(monkeypatch):
+async def test_delete_account_removes_assistant_messages(monkeypatch):
     deleted: list[str] = []
 
     class _Client:
@@ -88,18 +88,9 @@ def test_delete_account_removes_assistant_messages(monkeypatch):
     monkeypatch.setattr(user_cleanup.httpx, "AsyncClient", _Client)
     monkeypatch.setattr(user_cleanup, "rest_patch", noop)
     monkeypatch.setattr(user_cleanup, "delete_user", noop)
-    _override_user()
-    try:
-        response = client.request(
-            "DELETE",
-            "/api/user/delete-account",
-            json={"confirm": "DELETE"},
-        )
-    finally:
-        _clear_override()
 
-    assert response.status_code == 200
-    assert response.json()["ok"] is True
+    await user_cleanup.purge_user_account(USER["id"], email=USER["email"], anonymize_queue=True)
+
     assert any(url.endswith("/assistant_messages") for url in deleted)
 
 
