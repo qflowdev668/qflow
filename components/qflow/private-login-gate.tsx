@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
+import { loginHref } from "@/lib/auth-gate"
 import { isPrivateUnlocked } from "@/lib/private-access"
 
 export function PrivateLoginGate({
@@ -19,7 +20,7 @@ export function PrivateLoginGate({
       setAllowed(true)
       return
     }
-    router.replace("/login")
+    router.replace(loginHref())
   }, [kind, router])
 
   if (!allowed) return null

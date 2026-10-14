@@ -6,6 +6,7 @@ import {
   googleBlockMessageForRole,
   isGoogleAuthUser,
 } from "@/lib/auth-providers"
+import { loginHref } from "@/lib/auth-gate"
 import {
   homePathForRole,
   isPublicPath,
@@ -78,10 +79,8 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!user && !isPublicPath(pathname)) {
-    const login = request.nextUrl.clone()
-    login.pathname = "/login"
-    login.search = ""
-    return NextResponse.redirect(login)
+    const href = loginHref(`${pathname}${request.nextUrl.search}`)
+    return NextResponse.redirect(new URL(href, request.url))
   }
 
   if (user && role) {

@@ -25,7 +25,8 @@ import {
   signOutIfPrivilegedGoogle,
 } from "@/lib/privileged-session-guard"
 import { finishOAuthResolution } from "@/lib/auth-resolution"
-import { useApp } from "@/lib/app-context"
+import { loginHref } from "@/lib/auth-gate"
+import { useAuthGateStatus } from "@/components/qflow/auth-gate"
 import { readLastRoute, type AppRole } from "@/lib/routes"
 
 function sleep(ms: number): Promise<void> {
@@ -42,7 +43,7 @@ export function AuthSplashOverlay() {
   const pathname = usePathname() || ""
   const router = useRouter()
   const t = useT()
-  const { isAuthLoading } = useApp()
+  const gateStatus = useAuthGateStatus()
   const onCallback = isAuthCallbackPath(pathname)
   const [visible, setVisible] = useState(() => onCallback || authSplashIsActive())
   const [homeCover, setHomeCover] = useState(false)
@@ -78,9 +79,9 @@ export function AuthSplashOverlay() {
       setVisible(true)
       return
     }
-    // Stay up through /login if the session is still being applied, so a
+    // Stay up through the destination while auth is still resolving, so a
     // success path never reveals the login page.
-    if (authSplashIsActive() && isAuthLoading) {
+    if (authSplashIsActive() && gateStatus === "loading") {
       setVisible(true)
       return
     }
@@ -88,7 +89,7 @@ export function AuthSplashOverlay() {
     clearAuthSplash()
     startedAt.current = 0
     deadlineAt.current = 0
-  }, [onCallback, isAuthLoading])
+  }, [onCallback, gateStatus])
 
   useEffect(() => {
     if (!onCallback) return
@@ -106,7 +107,7 @@ export function AuthSplashOverlay() {
       if (!active || !errorNow) return
       const href = hasStoredAuthSession()
         ? destinationAfterSignIn("user", readLastRoute())
-        : `/login?auth_error=${encodeURIComponent(expiredMessage.current)}`
+        : loginHref(null, { auth_error: expiredMessage.current })
       routerRef.current.replace(href)
     }, 900)
 
@@ -124,10 +125,10 @@ export function AuthSplashOverlay() {
 
     const run = async () => {
       const params = new URLSearchParams(window.location.search)
-      const expiredLogin = `/login?auth_error=${encodeURIComponent(expiredMessage.current)}`
+      const expiredLogin = loginHref(null, { auth_error: expiredMessage.current })
       const supabase = createClient()
       if (!supabase) {
-        await replaceAfterHold("/login?auth_error=Supabase+is+not+configured")
+        await replaceAfterHold(loginHref(null, { auth_error: "Supabase is not configured" }))
         return
       }
 
@@ -207,7 +208,7 @@ export function AuthSplashOverlay() {
           await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
           return
         }
-        await replaceAfterHold("/login")
+        await replaceAfterHold(loginHref())
         return
       }
 
@@ -271,7 +272,7 @@ export function AuthSplashOverlay() {
             className="text-sm font-medium text-primary"
             onClick={() => {
               clearAuthSplash()
-              routerRef.current.replace("/login")
+              routerRef.current.replace(loginHref())
             }}
           >
             {t.backToSignIn}

@@ -4,6 +4,8 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { resetAuthCodeExchange } from "@/lib/auth-code"
 import { clearAuthSplash } from "@/lib/auth-splash"
+import { resetAuthGateForTests } from "@/lib/auth-gate"
+import { resetOAuthResolution } from "@/lib/auth-resolution"
 
 const nav = {
   pathname: "/auth/callback/",
@@ -117,6 +119,8 @@ describe("AuthSplashOverlay", () => {
   beforeEach(() => {
     jest.useFakeTimers()
     resetAuthCodeExchange()
+    resetAuthGateForTests()
+    resetOAuthResolution()
     clearAuthSplash()
     nav.pathname = "/auth/callback/"
     nav.replace.mockClear()
@@ -200,6 +204,7 @@ describe("AuthSplashOverlay", () => {
 
     appAuth.isAuthLoading = false
     view.rerender(<AuthSplashOverlay />)
+    await flush()
     expect(screen.queryByTestId("post-sign-in-skeleton")).toBeNull()
   })
 
@@ -211,6 +216,7 @@ describe("AuthSplashOverlay", () => {
 
     nav.pathname = "/home/"
     view.rerender(<AuthSplashOverlay />)
+    await flush()
     expect(screen.queryByTestId("post-sign-in-skeleton")).toBeNull()
     expect(screen.queryByTestId("sign-in-loader")).toBeNull()
     expect(screen.queryByTestId("qflow-splash")).toBeNull()

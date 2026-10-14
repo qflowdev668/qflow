@@ -19,7 +19,6 @@ import {
 } from "@/lib/auth-redirect"
 import {
   authCallbackPending,
-  loginRedirectFor,
   noteAuthEvent,
   type AuthResolution,
 } from "@/lib/auth-callback-flow"
@@ -1084,7 +1083,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (!cancelled) setIsAuthLoading(false)
+      if (!cancelled) {
+        const stillPending =
+          typeof window !== "undefined" &&
+          (authCallbackPending(window.location.pathname, window.location.search) ||
+            oauthResolutionPending())
+        if (!stillPending) setIsAuthLoading(false)
+      }
     }
 
     void sync()
@@ -1141,6 +1146,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 // Still inside staff/admin OTP verify — ignore this SIGNED_OUT.
                 return
               }
+              if (
+                oauthResolutionPending() ||
+                (typeof window !== "undefined" &&
+                  authCallbackPending(window.location.pathname, window.location.search))
+              ) {
+                return
+              }
+              const onReset =
+                typeof window !== "undefined" &&
+                window.location.pathname.startsWith("/forgot-password")
+              if (isDemoUser.current || onReset) return
               revokeStaffOtp()
               revokeAdminOtp()
               clearOtpLoginFlow()
@@ -1149,16 +1165,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
               setNotifications([])
               setQueueHistory([])
               setSessionExpiresAt(null)
-              const onReset =
-                typeof window !== "undefined" &&
-                window.location.pathname.startsWith("/forgot-password")
-              if (!isDemoUser.current && !onReset) {
-                if (
-                  !PRE_AUTH_SCREENS.includes(screenFromPath(pathnameRef.current))
-                ) {
-                  navigateTo("login")
-                }
-              }
             })
           }, 300)
           return
@@ -1247,35 +1253,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase, loadProfile, loadUserData, goToRoleHome, navigateTo, router])
 
-  // Client route guard (static export has no Edge proxy): after auth resolves,
-  // bounce anonymous users off protected paths and enforce role homes.
+  // Role homes only. Anonymous visitors are sent to /login by AuthGate
+  // after getSession() resolves empty — never while auth is still loading.
   useEffect(() => {
     if (isAuthLoading || oauthPending || authResolution.awaitingSignIn) return
-    if (typeof window === "undefined") return
-
+    if (!currentUser) return
     const path = pathname.split("?")[0] || "/"
-    const redirect = loginRedirectFor(
-      {
-        resolved: authResolution.resolved || !isAuthLoading,
-        hasUser: Boolean(currentUser),
-        awaitingSignIn: authResolution.awaitingSignIn,
-      },
-      path
-    )
-    if (redirect !== "/login") {
-      if (!currentUser || isPublicPath(path)) return
-    } else if (!currentUser) {
-      const returnUrl = `${window.location.pathname}${window.location.search}`
-      const params = new URLSearchParams()
-      if (returnUrl && returnUrl !== "/login" && !returnUrl.startsWith("/login?")) {
-        params.set("returnUrl", returnUrl)
-      }
-      const qs = params.toString()
-      startTransition(() => {
-        router.replace(qs ? `/login?${qs}` : "/login")
-      })
-      return
-    }
+    if (isPublicPath(path)) return
 
     const blocked = pathAllowedForRole(path, currentUser.role)
     if (blocked) {
@@ -1283,7 +1267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         router.replace(blocked)
       })
     }
-  }, [isAuthLoading, oauthPending, authResolution.awaitingSignIn, authResolution.resolved, currentUser, pathname, router])
+  }, [isAuthLoading, oauthPending, authResolution.awaitingSignIn, currentUser, pathname, router])
 
   // Realtime: queue movements, location busyness, and new notifications
   useEffect(() => {

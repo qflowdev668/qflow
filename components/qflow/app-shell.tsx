@@ -19,6 +19,7 @@ import { RoutePersistence } from "@/components/qflow/route-persistence"
 import { PwaRegister } from "@/components/qflow/pwa-register"
 import { FlowBar } from "@/components/qflow/flow-bar"
 import { ActiveRouteSync } from "@/components/qflow/active-route-sync"
+import { AuthGate } from "@/components/qflow/auth-gate"
 import { AuthSplashOverlay } from "@/components/qflow/auth-splash-overlay"
 
 function SessionGate({ children }: { children: ReactNode }) {
@@ -62,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <PwaRegister />
               <SessionGate>
                 <ActiveRouteSync />
-                {children}
+                <AuthGate>{children}</AuthGate>
                 <FlowBar />
                 <AuthSplashOverlay />
               </SessionGate>

@@ -1,3 +1,4 @@
+import { loginHref, loginRedirectAllowed } from "@/lib/auth-gate"
 import { createClient } from "@/lib/supabase/client"
 import { applySessionExpiresInFromResponse } from "@/lib/session-expiry-signal"
 
@@ -34,13 +35,9 @@ function isSessionExpiredBody(body: unknown): boolean {
 
 function redirectToLoginPreservingReturnUrl(): void {
   if (typeof window === "undefined") return
+  if (!loginRedirectAllowed()) return
   const returnUrl = `${window.location.pathname}${window.location.search}`
-  const params = new URLSearchParams()
-  if (returnUrl && returnUrl !== "/login" && !returnUrl.startsWith("/login?")) {
-    params.set("returnUrl", returnUrl)
-  }
-  const qs = params.toString()
-  window.location.assign(qs ? `/login?${qs}` : "/login")
+  window.location.assign(loginHref(returnUrl))
 }
 
 /** Hide stack traces, SQL, and storage internals from customer-facing copy. */
