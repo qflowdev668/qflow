@@ -1,5 +1,6 @@
 import {
   destinationAfterSignIn,
+  destinationBeforeExchange,
   firstNameFromSessionUser,
   isCustomerHomePath,
   loginRedirectFor,
@@ -94,6 +95,17 @@ describe("planAuthCallback", () => {
   it("sends a signed-in user to home instead of the startup splash", () => {
     expect(destinationAfterSignIn("user", "/")).toBe("/home")
     expect(destinationAfterSignIn("user", null)).toBe("/home")
+  })
+
+  it("does not send a successful sign-in back to the login page", () => {
+    expect(destinationBeforeExchange("?code=test", "/login/")).toBe("/home")
+    expect(destinationBeforeExchange("?code=test", "/login")).toBe("/home")
+    expect(destinationBeforeExchange("?code=test", "/register/")).toBe("/home")
+    expect(destinationBeforeExchange("?code=test", "/forgot-password/")).toBe("/home")
+    expect(destinationBeforeExchange("?returnUrl=%2Fprofile%2F", "/login/")).toBe("/profile/")
+    expect(destinationBeforeExchange("?code=test", "/profile/")).toBe("/profile/")
+    expect(destinationAfterSignIn("user", "/login/")).toBe("/home")
+    expect(destinationAfterSignIn("staff", "/login")).toBe("/staff")
   })
 })
 

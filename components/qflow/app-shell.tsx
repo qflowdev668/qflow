@@ -20,6 +20,7 @@ import { PwaRegister } from "@/components/qflow/pwa-register"
 import { FlowBar } from "@/components/qflow/flow-bar"
 import { ActiveRouteSync } from "@/components/qflow/active-route-sync"
 import { AuthGate } from "@/components/qflow/auth-gate"
+import { PublicOnlyGate } from "@/components/qflow/public-only-gate"
 import { AuthSplashOverlay } from "@/components/qflow/auth-splash-overlay"
 
 function SessionGate({ children }: { children: ReactNode }) {
@@ -63,7 +64,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <PwaRegister />
               <SessionGate>
                 <ActiveRouteSync />
-                <AuthGate>{children}</AuthGate>
+                <AuthGate>
+                  <PublicOnlyGate>{children}</PublicOnlyGate>
+                </AuthGate>
                 <FlowBar />
                 <AuthSplashOverlay />
               </SessionGate>

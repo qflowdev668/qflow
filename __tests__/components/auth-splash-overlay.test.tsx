@@ -346,29 +346,51 @@ describe("AuthSplashOverlay", () => {
     expect(nav.replace).toHaveBeenCalledWith("/location/abc")
   })
 
-  it("uses a neutral skeleton for the staff home", async () => {
+  it("sends staff through the pre-chosen home destination instead of login", async () => {
     auth.role = "staff"
     render(<AuthSplashOverlay />)
     await flush()
-    expect(screen.queryByTestId("home-greeting-skeleton")).toBeNull()
-    expect(screen.getByTestId("post-sign-in-neutral")).toBeTruthy()
-    expect(nav.replace).not.toHaveBeenCalled()
-    await act(async () => {
-      jest.advanceTimersByTime(400)
-    })
-    expect(nav.replace).toHaveBeenCalledWith("/staff")
+    expect(nav.replace).toHaveBeenCalledWith("/home")
+    expect(nav.replace.mock.calls.every((call) => !String(call[0]).startsWith("/login"))).toBe(true)
   })
 
-  it("uses a neutral skeleton for the admin home", async () => {
+  it("sends admin through the pre-chosen home destination instead of login", async () => {
     auth.role = "admin"
     render(<AuthSplashOverlay />)
     await flush()
-    expect(screen.queryByTestId("home-greeting-skeleton")).toBeNull()
-    expect(screen.getByTestId("post-sign-in-neutral")).toBeTruthy()
-    expect(nav.replace).not.toHaveBeenCalled()
+    expect(nav.replace).toHaveBeenCalledWith("/home")
+    expect(nav.replace.mock.calls.every((call) => !String(call[0]).startsWith("/login"))).toBe(true)
+  })
+
+  it("records no /login navigation when a saved login route follows a delayed successful exchange", async () => {
+    window.sessionStorage.setItem("qflow_last_route", "/login/")
+    auth.exchange.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          window.setTimeout(() => {
+            auth.session = { user: { id: "user-1" } }
+            resolve({ error: null })
+          }, 250)
+        })
+    )
+
+    render(<AuthSplashOverlay />)
+    expect(screen.queryByTestId("login-form")).toBeNull()
+    expect(screen.queryByText(/welcome back/i)).toBeNull()
+
+    await flush()
     await act(async () => {
-      jest.advanceTimersByTime(400)
+      jest.advanceTimersByTime(250)
     })
-    expect(nav.replace).toHaveBeenCalledWith("/admin")
+    await flush()
+
+    const targets = nav.replace.mock.calls.map((call) => String(call[0]))
+    expect(targets.length).toBeGreaterThan(0)
+    expect(targets.some((href) => href === "/login" || href.startsWith("/login?") || href.startsWith("/login/"))).toBe(
+      false
+    )
+    expect(nav.replace).toHaveBeenCalledWith("/home")
+    expect(screen.queryByTestId("login-form")).toBeNull()
+    expect(screen.queryByText(/welcome back/i)).toBeNull()
   })
 })

@@ -5,14 +5,13 @@ import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { Button } from "@/components/ui/button"
 import {
-  homePathForRole,
-  pathAllowedForRole,
   readLastRoute,
   type AppRole,
 } from "@/lib/routes"
 import { useRouter } from "next/navigation"
 import { QFlowSplash } from "@/components/qflow/qflow-splash"
 import { authSplashIsActive } from "@/lib/auth-splash"
+import { destinationAfterSignIn } from "@/lib/auth-callback-flow"
 
 export function SplashScreen() {
   const {
@@ -39,19 +38,7 @@ export function SplashScreen() {
       routeRef.current
 
     if (authed && user) {
-      const last = readLastRoute()
-      if (last) {
-        const blocked = pathAllowedForRole(last, user.role as AppRole)
-        if (!blocked && last !== "/") {
-          router.replace(last)
-          return
-        }
-        if (blocked) {
-          router.replace(blocked)
-          return
-        }
-      }
-      router.replace(homePathForRole(user.role as AppRole))
+      router.replace(destinationAfterSignIn(user.role as AppRole, readLastRoute()))
       return
     }
 

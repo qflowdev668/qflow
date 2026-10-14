@@ -154,8 +154,20 @@ export function pathAllowedForRole(
 
 export function shouldPersistPath(pathname: string): boolean {
   if (pathname === "/") return false
-  if (pathname.startsWith("/login/otp")) return false
-  if (pathname.startsWith("/auth")) return false
+  const path = pathname.replace(/\/$/, "") || "/"
+  if (
+    path === "/login" ||
+    path.startsWith("/login/") ||
+    path === "/register" ||
+    path.startsWith("/register/") ||
+    path === "/forgot-password" ||
+    path.startsWith("/forgot-password/") ||
+    path === "/onboarding" ||
+    path.startsWith("/onboarding/") ||
+    path.startsWith("/auth")
+  ) {
+    return false
+  }
   return true
 }
 

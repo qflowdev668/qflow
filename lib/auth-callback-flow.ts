@@ -124,14 +124,36 @@ export function firstNameFromSessionUser(
   return null
 }
 
+const AUTH_ENTRY_PREFIXES = ["/login", "/register", "/forgot-password", "/onboarding", "/auth"]
+
+/** Login, signup, and other pre-auth screens are not places to land after sign-in. */
+export function isAuthEntryPath(href: string): boolean {
+  const path = (href.split("?")[0] || "/").replace(/\/$/, "") || "/"
+  if (path === "/") return true
+  return AUTH_ENTRY_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+}
+
+function isRestorableDestination(href: string): boolean {
+  return href.startsWith("/") && !href.startsWith("//") && !isAuthEntryPath(href)
+}
+
+/**
+ * Where a successful code exchange should go. Chosen from the URL and the
+ * saved route only — not from whether a session exists yet.
+ */
+export function destinationBeforeExchange(search: string, lastRoute: string | null): string {
+  const raw = search.startsWith("?") ? search.slice(1) : search
+  const returnUrl = new URLSearchParams(raw).get("returnUrl")
+  if (returnUrl && isRestorableDestination(returnUrl)) return returnUrl
+  if (lastRoute && isRestorableDestination(lastRoute)) return lastRoute
+  return "/home"
+}
+
 export function destinationAfterSignIn(role: AppRole, lastRoute: string | null): string {
-  if (lastRoute) {
-    const path = (lastRoute.split("?")[0] || "/").replace(/\/$/, "") || "/"
-    if (path !== "/" && !path.startsWith("/auth")) {
-      const blocked = pathAllowedForRole(lastRoute, role)
-      if (!blocked) return lastRoute
-      if (!blocked.startsWith("/login")) return blocked
-    }
+  if (lastRoute && isRestorableDestination(lastRoute)) {
+    const blocked = pathAllowedForRole(lastRoute, role)
+    if (!blocked) return lastRoute
+    if (!blocked.startsWith("/login")) return blocked
   }
   return homePathForRole(role)
 }

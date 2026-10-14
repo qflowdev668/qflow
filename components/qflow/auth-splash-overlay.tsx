@@ -4,9 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { exchangeAuthCodeOnce } from "@/lib/auth-code"
 import {
-  AUTH_SESSION_WAIT_MS,
   AUTH_SPLASH_MAX_MS,
-  destinationAfterSignIn,
+  AUTH_SESSION_WAIT_MS,
+  destinationBeforeExchange,
   hasOAuthError,
   hasStoredAuthSession,
   isAuthCallbackPath,
@@ -27,7 +27,7 @@ import {
 import { finishOAuthResolution } from "@/lib/auth-resolution"
 import { loginHref } from "@/lib/auth-gate"
 import { useAuthGateStatus } from "@/components/qflow/auth-gate"
-import { readLastRoute, type AppRole } from "@/lib/routes"
+import { readLastRoute } from "@/lib/routes"
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -66,7 +66,7 @@ export function AuthSplashOverlay() {
       setHomeCover(false)
       return
     }
-    setHomeCover(isCustomerHomePath(destinationAfterSignIn("user", readLastRoute())))
+    setHomeCover(isCustomerHomePath(destinationBeforeExchange(window.location.search, readLastRoute())))
   }, [attempt, onCallback])
 
   useEffect(() => {
@@ -106,7 +106,7 @@ export function AuthSplashOverlay() {
     const watchdog = window.setTimeout(() => {
       if (!active || !errorNow) return
       const href = hasStoredAuthSession()
-        ? destinationAfterSignIn("user", readLastRoute())
+        ? destinationBeforeExchange(window.location.search, readLastRoute())
         : loginHref(null, { auth_error: expiredMessage.current })
       routerRef.current.replace(href)
     }, 900)
@@ -125,6 +125,9 @@ export function AuthSplashOverlay() {
 
     const run = async () => {
       const params = new URLSearchParams(window.location.search)
+      // Pick the landing page before the code exchange. A saved /login must
+      // not become the success destination.
+      const dest = destinationBeforeExchange(window.location.search, readLastRoute())
       const expiredLogin = loginHref(null, { auth_error: expiredMessage.current })
       const supabase = createClient()
       if (!supabase) {
@@ -144,7 +147,7 @@ export function AuthSplashOverlay() {
 
       if (raced.kind === "timeout") {
         if (hasStoredAuthSession()) {
-          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
+          await replaceAfterHold(dest)
           return
         }
         if (hasOAuthError(params)) {
@@ -204,8 +207,11 @@ export function AuthSplashOverlay() {
       const user = session?.user
       if (!active || timedOut.current) return
       if (!user?.id) {
+        // Exchange can succeed before getSession() sees the user. That is
+        // still the success path: wait above, and only /login if it never appears.
+        if (exchangeSucceeded) return
         if (hasStoredAuthSession()) {
-          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
+          await replaceAfterHold(dest)
           return
         }
         await replaceAfterHold(loginHref())
@@ -229,7 +235,6 @@ export function AuthSplashOverlay() {
         }
       }
 
-      const dest = destinationAfterSignIn((role ?? "user") as AppRole, readLastRoute())
       await replaceAfterHold(dest)
     }
 
