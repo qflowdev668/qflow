@@ -88,6 +88,7 @@ async def test_delete_account_removes_assistant_messages(monkeypatch):
     monkeypatch.setattr(user_cleanup.httpx, "AsyncClient", _Client)
     monkeypatch.setattr(user_cleanup, "rest_patch", noop)
     monkeypatch.setattr(user_cleanup, "delete_user", noop)
+    monkeypatch.setattr(user_cleanup, "service_headers", lambda extra=None: {"apikey": "test"})
 
     await user_cleanup.purge_user_account(USER["id"], email=USER["email"], anonymize_queue=True)
 
