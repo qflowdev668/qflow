@@ -13,7 +13,7 @@ type QFlowSplashProps = {
   children?: ReactNode
 }
 
-/** Blue branded splash shared by app start and the sign-in callback. */
+/** Startup splash. Sign-in uses SignInLoader instead. */
 export function QFlowSplash({
   subtitle,
   showDots = true,

@@ -2,7 +2,9 @@ import { homePathForRole, pathAllowedForRole, type AppRole } from "@/lib/routes"
 
 export const AUTH_SPLASH_MIN_MS = 400
 export const AUTH_SPLASH_MAX_MS = 8000
-export const AUTH_SPLASH_FADE_MS = 180
+export const AUTH_SPLASH_FADE_MS = 200
+/** How long the "You're next" ticket stays before the loader fades. */
+export const AUTH_SIGN_IN_TICK_MS = 350
 /** How long an error callback waits for getSession before it leaves the splash. */
 export const AUTH_SESSION_WAIT_MS = 700
 
@@ -55,6 +57,22 @@ export function planAuthCallback(params: URLSearchParams, hasSession: boolean): 
 
 export function splashHoldMs(startedAt: number, now: number, minMs = AUTH_SPLASH_MIN_MS): number {
   return Math.max(0, minMs - (now - startedAt))
+}
+
+/** First name already on the session. Does not fetch a profile. */
+export function firstNameFromSessionUser(
+  user: { user_metadata?: Record<string, unknown> | null } | null | undefined
+): string | null {
+  const meta = user?.user_metadata
+  if (!meta) return null
+  const given = meta.given_name
+  if (typeof given === "string" && given.trim()) return given.trim().split(/\s+/)[0]
+  for (const value of [meta.name, meta.full_name]) {
+    if (typeof value !== "string") continue
+    const first = value.trim().split(/\s+/)[0]
+    if (first) return first
+  }
+  return null
 }
 
 export function destinationAfterSignIn(role: AppRole, lastRoute: string | null): string {

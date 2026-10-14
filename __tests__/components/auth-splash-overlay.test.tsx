@@ -11,7 +11,7 @@ const nav = {
 }
 
 const auth = {
-  session: null as { user: { id: string } } | null,
+  session: null as { user: { id: string; user_metadata?: Record<string, unknown> } } | null,
   hangSession: false,
   hangProfile: false,
   exchange: jest.fn(async () => ({ error: null as { message: string } | null })),
@@ -37,7 +37,14 @@ jest.mock("@/hooks/use-t", () => ({
     signInTakingLonger: "Taking longer than usual",
     backToSignIn: "Back to sign in",
     retry: "Retry",
+    signInCheckingDetails: "Checking your details",
+    signInFindingPlace: "Finding your place",
+    signInAlmostThere: "Almost there",
+    signInYoureNext: "You're next",
+    signInWelcomeName: "Welcome, {name}",
   }),
+  fmt: (template: string, vars: Record<string, string>) =>
+    template.replaceAll("{name}", vars.name ?? ""),
 }))
 
 jest.mock("@/lib/supabase/client", () => ({
@@ -83,6 +90,7 @@ describe("Auth callback page", () => {
   it("does not mount a second splash", () => {
     const { container } = render(<AuthCallbackPage />)
     expect(container.querySelector("[data-testid=qflow-splash]")).toBeNull()
+    expect(container.querySelector("[data-testid=sign-in-loader]")).toBeNull()
   })
 })
 
@@ -111,12 +119,15 @@ describe("AuthSplashOverlay", () => {
   it("shows the branded splash and replaces into the app after one exchange", async () => {
     render(<AuthSplashOverlay />)
 
-    expect(screen.getByTestId("qflow-splash")).toBeTruthy()
-    expect(screen.getByTestId("qflow-splash-subtitle").textContent).toBe("Signing you in")
+    expect(screen.getByTestId("sign-in-loader")).toBeTruthy()
+    expect(screen.queryByTestId("qflow-splash")).toBeNull()
+    expect(screen.getByTestId("sign-in-status").textContent).toBe("Checking your details")
     expect(screen.queryByText("Signing you in...")).toBeNull()
 
     await flush()
     expect(auth.exchange).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId("sign-in-ticket").textContent).toContain("You're next")
+    expect(screen.queryByTestId("sign-in-welcome")).toBeNull()
     expect(nav.replace).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -128,8 +139,29 @@ describe("AuthSplashOverlay", () => {
     expect(target).not.toMatch(/OAuth|PKCE|error_description/)
   })
 
+  it("shows the ticket then fades the loader after the destination replace", async () => {
+    const view = render(<AuthSplashOverlay />)
+    await flush()
+    expect(screen.getByTestId("sign-in-ticket")).toBeTruthy()
+
+    await act(async () => {
+      jest.advanceTimersByTime(400)
+    })
+    expect(nav.replace).toHaveBeenCalledWith("/home")
+
+    nav.pathname = "/home/"
+    view.rerender(<AuthSplashOverlay />)
+    expect(screen.getByTestId("sign-in-loader").className).toContain("opacity-0")
+    expect(screen.queryByTestId("qflow-splash")).toBeNull()
+
+    await act(async () => {
+      jest.advanceTimersByTime(200)
+    })
+    expect(screen.queryByTestId("sign-in-loader")).toBeNull()
+  })
+
   it("continues into the app when an error param arrives with a session", async () => {
-    auth.session = { user: { id: "user-1" } }
+    auth.session = { user: { id: "user-1", user_metadata: { name: "Thandi Mkhize" } } }
     setSearch("?error=server_error&error_code=bad_oauth_state&error_description=OAuth+state+not+found+or+expired")
 
     render(<AuthSplashOverlay />)
@@ -139,6 +171,7 @@ describe("AuthSplashOverlay", () => {
     })
 
     expect(auth.exchange).not.toHaveBeenCalled()
+    expect(screen.getByTestId("sign-in-welcome").textContent).toBe("Welcome, Thandi")
     expect(nav.replace).toHaveBeenCalledWith("/home")
     expect(String(nav.replace.mock.calls[0][0])).not.toMatch(/OAuth state/)
   })
@@ -148,6 +181,7 @@ describe("AuthSplashOverlay", () => {
 
     render(<AuthSplashOverlay />)
     await flush()
+    expect(screen.queryByTestId("sign-in-ticket")).toBeNull()
     await act(async () => {
       jest.advanceTimersByTime(400)
     })
@@ -168,6 +202,7 @@ describe("AuthSplashOverlay", () => {
     })
 
     expect(screen.getByText("Taking longer than usual")).toBeTruthy()
+    expect(screen.getByTestId("sign-in-queue").querySelector(".qflow-queue-shuffle")).toBeNull()
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Back to sign in" })).toBeTruthy()
     expect(nav.replace).not.toHaveBeenCalled()
@@ -201,7 +236,11 @@ describe("AuthSplashOverlay", () => {
     render(<AuthSplashOverlay />)
     await flush()
     await act(async () => {
-      jest.advanceTimersByTime(500)
+      jest.advanceTimersByTime(300)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      jest.advanceTimersByTime(350)
       await Promise.resolve()
       await Promise.resolve()
     })

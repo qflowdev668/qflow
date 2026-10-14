@@ -362,11 +362,117 @@
   transform-origin: center center;
 }
 
+/* Sign-in loader: queue steps forward. 26px is one dot slot. */
+@keyframes qflow-queue-shuffle {
+  0%,
+  62% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-26px, 0, 0);
+  }
+}
+
+.qflow-queue-window {
+  position: relative;
+  width: 130px;
+  height: 28px;
+  overflow: hidden;
+}
+
+.qflow-queue-track {
+  display: flex;
+  width: 156px;
+  height: 28px;
+}
+
+.qflow-queue-shuffle {
+  animation: qflow-queue-shuffle 700ms cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.qflow-queue-slot {
+  display: flex;
+  width: 26px;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.qflow-queue-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.qflow-queue-front {
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.28);
+}
+
+@keyframes qflow-sign-in-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -3px, 0);
+  }
+}
+
+.qflow-sign-in-float {
+  animation: qflow-sign-in-float 2.6s ease-in-out infinite;
+}
+
+@keyframes qflow-ticket-in {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.qflow-ticket-in {
+  animation: qflow-ticket-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left center;
+}
+
+@keyframes qflow-tick-spring {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.qflow-tick-spring {
+  animation: qflow-tick-spring 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .qflow-next-ring,
   .qflow-logo-pop,
   .qflow-wordmark-in,
-  .qflow-load-dot {
+  .qflow-load-dot,
+  .qflow-sign-in-float,
+  .qflow-queue-shuffle,
+  .qflow-ticket-in,
+  .qflow-tick-spring {
     animation: none !important;
   }
 }

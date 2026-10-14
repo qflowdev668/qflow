@@ -5,9 +5,11 @@ import { usePathname, useRouter } from "next/navigation"
 import { exchangeAuthCodeOnce } from "@/lib/auth-code"
 import {
   AUTH_SESSION_WAIT_MS,
+  AUTH_SIGN_IN_TICK_MS,
   AUTH_SPLASH_FADE_MS,
   AUTH_SPLASH_MAX_MS,
   destinationAfterSignIn,
+  firstNameFromSessionUser,
   hasOAuthError,
   hasStoredAuthSession,
   isAuthCallbackPath,
@@ -15,7 +17,7 @@ import {
   splashHoldMs,
 } from "@/lib/auth-callback-flow"
 import { authSplashIsActive, clearAuthSplash, markAuthSplash } from "@/lib/auth-splash"
-import { QFlowSplash } from "@/components/qflow/qflow-splash"
+import { SignInLoader } from "@/components/qflow/sign-in-loader"
 import { useT } from "@/hooks/use-t"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -33,8 +35,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Stays mounted in the app shell so the branded splash does not unmount
- * when /auth/callback replaces to the destination.
+ * Stays mounted in the app shell so one SignInLoader covers
+ * /auth/callback until the destination route replaces it.
  */
 export function AuthSplashOverlay() {
   const pathname = usePathname() || ""
@@ -44,6 +46,8 @@ export function AuthSplashOverlay() {
   const [visible, setVisible] = useState(() => onCallback || authSplashIsActive())
   const [fading, setFading] = useState(() => !onCallback && authSplashIsActive())
   const [slow, setSlow] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+  const [firstName, setFirstName] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const startedAt = useRef(0)
   const deadlineAt = useRef(0)
@@ -97,9 +101,17 @@ export function AuthSplashOverlay() {
       routerRef.current.replace(href)
     }, 900)
 
-    const replaceAfterHold = async (href: string) => {
+    const replaceAfterHold = async (
+      href: string,
+      celebrate?: { name: string | null }
+    ) => {
+      if (celebrate) {
+        setFirstName(celebrate.name)
+        setConfirmed(true)
+      }
       const hold = splashHoldMs(startedAt.current || Date.now(), Date.now())
-      if (hold) await sleep(hold)
+      const wait = celebrate ? Math.max(hold, AUTH_SIGN_IN_TICK_MS) : hold
+      if (wait) await sleep(wait)
       if (!active || timedOut.current) return
       routerRef.current.replace(href)
     }
@@ -125,7 +137,7 @@ export function AuthSplashOverlay() {
 
       if (raced.kind === "timeout") {
         if (hasStoredAuthSession()) {
-          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
+          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()), { name: null })
           return
         }
         if (hasOAuthError(params)) {
@@ -170,12 +182,14 @@ export function AuthSplashOverlay() {
       if (!active || timedOut.current) return
       if (!user?.id) {
         if (hasStoredAuthSession()) {
-          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
+          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()), { name: null })
           return
         }
         await replaceAfterHold("/login")
         return
       }
+
+      const knownName = firstNameFromSessionUser(user)
 
       const role = await Promise.race([
         fetchProfileRole(supabase, user.id),
@@ -195,7 +209,7 @@ export function AuthSplashOverlay() {
       }
 
       const dest = destinationAfterSignIn((role ?? "user") as AppRole, readLastRoute())
-      await replaceAfterHold(dest)
+      await replaceAfterHold(dest, { name: knownName })
     }
 
     void run()
@@ -209,36 +223,21 @@ export function AuthSplashOverlay() {
   if (!visible) return null
 
   return (
-    <QFlowSplash subtitle={slow ? undefined : t.signingYouIn} showDots={!slow} fading={fading}>
-      {slow ? (
-        <div
-          data-testid="auth-splash-slow"
-          className="absolute inset-x-6 bottom-16 z-10 mx-auto max-w-sm rounded-2xl bg-white p-5 text-center text-foreground"
-        >
-          <p className="mb-4 text-sm font-medium">{t.signInTakingLonger}</p>
-          <button
-            type="button"
-            className="mb-3 h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground"
-            onClick={() => {
-              exchangeGuard.current = null
-              setSlow(false)
-              setAttempt((value) => value + 1)
-            }}
-          >
-            {t.retry}
-          </button>
-          <button
-            type="button"
-            className="text-sm font-medium text-primary"
-            onClick={() => {
-              clearAuthSplash()
-              routerRef.current.replace("/login")
-            }}
-          >
-            {t.backToSignIn}
-          </button>
-        </div>
-      ) : null}
-    </QFlowSplash>
+    <SignInLoader
+      phase={slow ? "slow" : confirmed ? "confirmed" : "waiting"}
+      fading={fading}
+      firstName={firstName}
+      onRetry={() => {
+        exchangeGuard.current = null
+        setConfirmed(false)
+        setFirstName(null)
+        setSlow(false)
+        setAttempt((value) => value + 1)
+      }}
+      onBack={() => {
+        clearAuthSplash()
+        routerRef.current.replace("/login")
+      }}
+    />
   )
 }

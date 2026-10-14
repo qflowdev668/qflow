@@ -1,4 +1,10 @@
-import { destinationAfterSignIn, hasStoredAuthSession, planAuthCallback, splashHoldMs } from "@/lib/auth-callback-flow"
+import {
+  destinationAfterSignIn,
+  firstNameFromSessionUser,
+  hasStoredAuthSession,
+  planAuthCallback,
+  splashHoldMs,
+} from "@/lib/auth-callback-flow"
 import { authSplashIsActive, clearAuthSplash, markAuthSplash } from "@/lib/auth-splash"
 import { screenFromPath } from "@/lib/routes"
 
@@ -32,6 +38,13 @@ describe("planAuthCallback", () => {
   it("does not treat the callback route as the startup splash", () => {
     expect(screenFromPath("/auth/callback/")).toBe("auth-callback")
     expect(screenFromPath("/auth/callback")).toBe("auth-callback")
+  })
+
+  it("reads a cached first name without waiting for a profile", () => {
+    expect(firstNameFromSessionUser(null)).toBeNull()
+    expect(firstNameFromSessionUser({ user_metadata: {} })).toBeNull()
+    expect(firstNameFromSessionUser({ user_metadata: { given_name: "Thandi" } })).toBe("Thandi")
+    expect(firstNameFromSessionUser({ user_metadata: { name: "Thandi Mkhize" } })).toBe("Thandi")
   })
 
   it("sends a signed-in user to home instead of the startup splash", () => {
