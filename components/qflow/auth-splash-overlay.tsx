@@ -57,6 +57,11 @@ export function AuthSplashOverlay() {
 
   useLayoutEffect(() => {
     if (!onCallback) return
+    const params = new URLSearchParams(window.location.search)
+    if (hasOAuthError(params) && !hasStoredAuthSession()) {
+      setHomeCover(false)
+      return
+    }
     setHomeCover(isCustomerHomePath(destinationAfterSignIn("user", readLastRoute())))
   }, [attempt, onCallback])
 

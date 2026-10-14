@@ -182,6 +182,8 @@ describe("AuthSplashOverlay", () => {
     setSearch("?error=access_denied&error_code=bad_oauth_state&error_description=OAuth+state+not+found+or+expired")
 
     render(<AuthSplashOverlay />)
+    expect(screen.queryByTestId("home-greeting-skeleton")).toBeNull()
+    expect(screen.getByTestId("post-sign-in-neutral")).toBeTruthy()
     await flush()
     expect(screen.queryByTestId("sign-in-ticket")).toBeNull()
     await act(async () => {
