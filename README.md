@@ -504,14 +504,15 @@ Required assets in `public/`:
 
 | File | Use |
 |------|-----|
-| `icon-192x192.png` | Android home screen |
-| `icon-512x512.png` | Android splash |
-| `apple-touch-icon.png` | iOS (180×180) |
-| `favicon.ico` | Browser tab |
-| `manifest.json` | `purpose: "any maskable"`, theme `#2563EB` |
+| `icon-192.png` | Android home screen (`purpose: "any"`) |
+| `icon-512.png` | Install icon (`purpose: "any"`) |
+| `icon-maskable-512.png` | Android adaptive icon (`purpose: "maskable"`) |
+| `apple-touch-icon-180.png` | iOS (180×180) |
+| `favicon.ico`, `favicon-16.png`, `favicon-32.png`, `favicon-48.png`, `favicon.svg` | Browser tab |
+| `manifest.json` | theme and background `#1A3FD6` |
 | `sw.js` | Offline precache + push; navigations are network-first (avoids cached splash on deep links) |
 
-Regenerate icons: `npm run pwa:icons`
+Icons come from `QFlow_Logo_Kit/`. `npm run pwa:icons` copies those files into `public/`.
 
 ---
 
@@ -618,7 +619,7 @@ npm run db:link          # link CLI to Supabase project
 npm run db:push          # apply migrations
 npm run db:backup        # supabase db dump → backups/qflow-YYYY-MM-DD.sql
 npm run functions:deploy # deploy push-dispatch Edge Function
-npm run pwa:icons        # regenerate PWA icons + favicon
+npm run pwa:icons        # copy QFlow_Logo_Kit icons into public/
 npm run pwa:vapid        # print new VAPID key pair
 ```
 

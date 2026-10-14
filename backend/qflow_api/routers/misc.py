@@ -14,7 +14,7 @@ class PushDispatchBody(BaseModel):
     title: str = "QFlow"
     body: str = Field(min_length=1)
     url: str = "/notifications"
-    icon: str = "/icon-192x192.png"
+    icon: str = "/icon-192.png?v=2"
 
 
 @router.post("/api/push/dispatch")
@@ -26,7 +26,7 @@ async def push_dispatch(request: Request, body: PushDispatchBody) -> Any:
         title=(body.title or "QFlow").strip() or "QFlow",
         body=body.body.strip(),
         url=(body.url or "/notifications").strip() or "/notifications",
-        icon=(body.icon or "/icon-192x192.png").strip() or "/icon-192x192.png",
+        icon=(body.icon or "/icon-192.png?v=2").strip() or "/icon-192.png?v=2",
     )
     status = 200 if result.get("ok", True) else 502
     if status != 200:

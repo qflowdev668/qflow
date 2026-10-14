@@ -2,7 +2,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
-import { QFlowLogo } from "@/components/qflow/qflow-logo"
+import { BrandLogo } from "@/components/qflow/brand-logo"
 import { apiFetch } from "@/lib/api-client"
 
 type Props = {
@@ -14,7 +14,7 @@ type State = {
 }
 
 function QFlowErrorLogo() {
-  return <QFlowLogo size="md" showWordmark className="mb-4" />
+  return <BrandLogo variant="wordmark" tone="light" size="md" className="mb-4" />
 }
 
 function ErrorFallback() {

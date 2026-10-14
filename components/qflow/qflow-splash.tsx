@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { QFlowLogo } from "@/components/qflow/qflow-logo"
+import { BrandLogo } from "@/components/qflow/brand-logo"
 import { cn } from "@/lib/utils"
 
 type QFlowSplashProps = {
@@ -41,10 +41,7 @@ export function QFlowSplash({
       />
 
       <div className="relative z-10 flex flex-col items-center qflow-logo-pop motion-reduce:animate-none">
-        <QFlowLogo size="xl" animate variant="frosted" className="mb-2" />
-        <h1 className="qflow-wordmark-in motion-reduce:animate-none mb-2 text-4xl font-bold tracking-tight text-white">
-          QFlow
-        </h1>
+        <BrandLogo variant="wordmark" tone="dark" size="xl" className="mb-2" />
         {subtitle ? (
           <p data-testid="qflow-splash-subtitle" className="text-lg font-medium text-white/80">
             {subtitle}

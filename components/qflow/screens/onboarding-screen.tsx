@@ -6,7 +6,7 @@ import { getTranslations } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { QFlowLogo } from "@/components/qflow/qflow-logo"
+import { BrandLogo } from "@/components/qflow/brand-logo"
 import { UserScreenLayout } from "@/components/qflow/user-screen-layout"
 import {
   ArriveReadyScene,
@@ -105,7 +105,7 @@ export function OnboardingScreen() {
 
         <div className="px-6 pb-4 shrink-0">
           <div className="flex justify-center mb-4">
-            <QFlowLogo size="md" />
+            <BrandLogo variant="icon" size="md" />
           </div>
           <h1 className="text-[1.75rem] font-bold text-foreground text-center mb-2">
             {t.welcomeToQflow}

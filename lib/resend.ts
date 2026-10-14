@@ -100,6 +100,7 @@ export async function sendLoginCodeEmail(
     ].join("\n"),
     html: `
       <div style="font-family: system-ui, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px;">
+        <img src="https://useqflow.app/wordmark-color.png?v=2" width="240" alt="QFlow" style="display:block;margin:0 0 20px;border:0;height:auto;" />
         <h1 style="font-size: 20px; color: #0f172a; margin: 0 0 12px;">${title}</h1>
         <p style="color: #475569; margin: 0 0 20px;">Use this code to finish signing in:</p>
         <p style="font-size: 32px; letter-spacing: 0.35em; font-weight: 700; color: #0f172a; margin: 0 0 20px;">${code}</p>
@@ -142,6 +143,7 @@ export async function sendPasswordResetEmail(to: string, code: string) {
     ].join("\n"),
     html: `
       <div style="font-family: system-ui, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px;">
+        <img src="https://useqflow.app/wordmark-color.png?v=2" width="240" alt="QFlow" style="display:block;margin:0 0 20px;border:0;height:auto;" />
         <h1 style="font-size: 20px; color: #0f172a; margin: 0 0 12px;">Reset your QFlow password</h1>
         <p style="color: #475569; margin: 0 0 20px;">Enter this code in the app, then choose a new password. This is not a sign-in link.</p>
         <p style="font-size: 32px; letter-spacing: 0.35em; font-weight: 700; color: #0f172a; margin: 0 0 20px;">${code}</p>

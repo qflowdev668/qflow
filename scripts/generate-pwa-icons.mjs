@@ -1,45 +1,23 @@
-import sharp from "sharp"
-import { writeFileSync } from "fs"
-import { tmpdir } from "os"
-import { join } from "path"
+import { copyFileSync } from "fs"
 
-/**
- * Full-bleed brand tile. Glyph stays in the center ~80% so
- * `purpose: "any maskable"` works on Android adaptive icons.
- */
-function svg(size) {
-  const fontSize = Math.round(size * 0.38)
-  return `
-<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <rect width="${size}" height="${size}" fill="#2563EB"/>
-  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle"
-    font-family="Arial, Helvetica, sans-serif" font-weight="700"
-    font-size="${fontSize}" fill="#ffffff">Q</text>
-</svg>`
+/** Copy the official kit into public/. Does not redraw or recolour the mark. */
+const copies = [
+  ["QFlow_Logo_Kit/png/favicon.ico", "public/favicon.ico"],
+  ["QFlow_Logo_Kit/png/favicon-16.png", "public/favicon-16.png"],
+  ["QFlow_Logo_Kit/png/favicon-32.png", "public/favicon-32.png"],
+  ["QFlow_Logo_Kit/png/favicon-48.png", "public/favicon-48.png"],
+  ["QFlow_Logo_Kit/svg/qflow-favicon.svg", "public/favicon.svg"],
+  ["QFlow_Logo_Kit/png/apple-touch-icon-180.png", "public/apple-touch-icon-180.png"],
+  ["QFlow_Logo_Kit/png/apple-touch-icon-180.png", "public/apple-touch-icon.png"],
+  ["QFlow_Logo_Kit/png/icon-192.png", "public/icon-192.png"],
+  ["QFlow_Logo_Kit/png/icon-512.png", "public/icon-512.png"],
+  ["QFlow_Logo_Kit/png/icon-maskable-512.png", "public/icon-maskable-512.png"],
+  ["QFlow_Logo_Kit/png/notification-badge-96.png", "public/notification-badge-96.png"],
+  ["QFlow_Logo_Kit/png/og-share-1200x630.png", "public/og-share-1200x630.png"],
+  ["QFlow_Logo_Kit/png/wordmark-color.png", "public/wordmark-color.png"],
+]
+
+for (const [from, to] of copies) {
+  copyFileSync(from, to)
+  console.log("copied", to)
 }
-
-async function writePng(size, file) {
-  const buf = await sharp(Buffer.from(svg(size))).png().toBuffer()
-  writeFileSync(file, buf)
-  console.log("wrote", file, buf.length)
-}
-
-await writePng(192, "public/icon-192x192.png")
-await writePng(512, "public/icon-512x512.png")
-await writePng(180, "public/apple-touch-icon.png")
-
-// Legacy filenames still referenced in a few places / caches
-await writePng(192, "public/icon-192.png")
-await writePng(512, "public/icon-512.png")
-
-const pngToIco = (await import("png-to-ico")).default
-const sizes = [16, 32, 48]
-const tmpPngs = []
-for (const size of sizes) {
-  const tmp = join(tmpdir(), `qflow-favicon-${size}.png`)
-  writeFileSync(tmp, await sharp(Buffer.from(svg(size))).png().toBuffer())
-  tmpPngs.push(tmp)
-}
-const icoBuf = await pngToIco(tmpPngs)
-writeFileSync("public/favicon.ico", icoBuf)
-console.log("wrote public/favicon.ico", icoBuf.length)

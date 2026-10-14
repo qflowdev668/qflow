@@ -42,7 +42,7 @@ async def send_push_to_user(
     title: str,
     body: str,
     url: str = "/notifications",
-    icon: str = "/icon-192x192.png",
+    icon: str = "/icon-192.png?v=2",
 ) -> dict[str, Any]:
     if not vapid_configured():
         return {"ok": True, "sent": 0, "error": "VAPID keys are not configured."}
@@ -67,7 +67,8 @@ async def send_push_to_user(
             "title": title or "QFlow",
             "body": body,
             "url": url or "/notifications",
-            "icon": icon or "/icon-192x192.png",
+            "icon": icon or "/icon-192.png?v=2",
+            "badge": "/notification-badge-96.png?v=2",
         }
     )
 

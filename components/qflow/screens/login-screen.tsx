@@ -7,7 +7,7 @@ import { SUPPORT_EMAIL } from "@/lib/support-email"
 import { useT } from "@/hooks/use-t"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { QFlowLogo } from "@/components/qflow/qflow-logo"
+import { BrandLogo } from "@/components/qflow/brand-logo"
 import {
   consumeUnlockQueryParam,
   unlockPrivateAccess,
@@ -134,7 +134,7 @@ export function LoginScreen() {
             onPointerCancel={onBrandPointerCancel}
             onClick={onBrandClick}
           >
-            <QFlowLogo size="md" className="mb-6" />
+            <BrandLogo variant="icon" size="md" className="mb-6" />
             <h1 className="text-3xl font-bold text-foreground mb-2">
               {t.welcomeBack}
             </h1>

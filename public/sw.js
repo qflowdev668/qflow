@@ -1,6 +1,16 @@
 /* QFlow service worker — offline shell cache + Web Push */
-const CACHE = "qflow-v6"
-const PRECACHE = ["/", "/manifest.json", "/icon-192x192.png", "/icon-512x512.png", "/apple-touch-icon.png"]
+const CACHE = "qflow-v7"
+const PRECACHE = [
+  "/",
+  "/manifest.json",
+  "/favicon.ico?v=2",
+  "/favicon.svg?v=2",
+  "/icon-192.png?v=2",
+  "/icon-512.png?v=2",
+  "/icon-maskable-512.png?v=2",
+  "/apple-touch-icon-180.png?v=2",
+  "/notification-badge-96.png?v=2",
+]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -64,8 +74,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || "QFlow", {
       body: data.body || "",
-      icon: data.icon || "/icon-192x192.png",
-      badge: "/icon-192x192.png",
+      icon: data.icon || "/icon-192.png?v=2",
+      badge: data.badge || "/notification-badge-96.png?v=2",
       data: { url: data.url || "/notifications" },
     })
   )

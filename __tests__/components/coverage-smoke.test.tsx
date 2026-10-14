@@ -90,7 +90,7 @@ describe("Coverage smoke — public screens", () => {
 
   it("SplashScreen", () => {
     render(<SplashScreen />)
-    expect(screen.getAllByText(/QFlow/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole("img", { name: "QFlow" })).toHaveAttribute("data-variant", "wordmark")
   })
 
   it("OnboardingScreen", () => {
