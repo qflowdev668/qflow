@@ -5,6 +5,7 @@
 export const AUTH_QUERY_KEYS = [
   "code",
   "error",
+  "error_code",
   "error_description",
   "auth_error",
   "access_token",
@@ -62,6 +63,9 @@ export function exchangeAuthCodeOnce(
   })()
 
   exchangeByCode.set(code, pending)
+  void pending.then((result) => {
+    if (result.error) exchangeByCode.delete(code)
+  })
   return pending
 }
 

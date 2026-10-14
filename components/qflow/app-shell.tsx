@@ -19,6 +19,7 @@ import { RoutePersistence } from "@/components/qflow/route-persistence"
 import { PwaRegister } from "@/components/qflow/pwa-register"
 import { FlowBar } from "@/components/qflow/flow-bar"
 import { ActiveRouteSync } from "@/components/qflow/active-route-sync"
+import { AuthSplashOverlay } from "@/components/qflow/auth-splash-overlay"
 
 function SessionGate({ children }: { children: ReactNode }) {
   const { isExpired } = useSession()
@@ -63,6 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <ActiveRouteSync />
                 {children}
                 <FlowBar />
+                <AuthSplashOverlay />
               </SessionGate>
             </div>
           </HighContrastProvider>

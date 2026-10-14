@@ -62,4 +62,15 @@ describe("exchangeAuthCodeOnce", () => {
 
     expect(result.error?.message).toMatch(/PKCE code verifier not found/)
   })
+
+  it("exchanges again after a failed attempt is forgotten", async () => {
+    const client = fakeClient({ error: { message: "boom" } })
+    const first = await exchangeAuthCodeOnce(client, "code-abc")
+    expect(first.error?.message).toBe("boom")
+
+    client.exchange.mockClear()
+    const second = await exchangeAuthCodeOnce(client, "code-abc")
+    expect(client.exchange).toHaveBeenCalledTimes(1)
+    expect(second.error?.message).toBe("boom")
+  })
 })

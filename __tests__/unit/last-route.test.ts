@@ -9,7 +9,7 @@ describe("last-route auth params", () => {
     window.history.pushState(
       {},
       "",
-      "/location/_/?id=loc-1&code=oauth-code&error=access_denied&error_description=nope&auth_error=PKCE&access_token=a&refresh_token=b"
+      "/location/_/?id=loc-1&code=oauth-code&error=access_denied&error_code=bad_oauth_state&error_description=nope&auth_error=PKCE&access_token=a&refresh_token=b"
     )
 
     writeLastRoute("/location/_/")

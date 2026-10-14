@@ -363,7 +363,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .qflow-next-ring {
+  .qflow-next-ring,
+  .qflow-logo-pop,
+  .qflow-wordmark-in,
+  .qflow-load-dot {
     animation: none !important;
   }
 }

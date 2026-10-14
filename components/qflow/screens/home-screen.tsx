@@ -148,13 +148,23 @@ export function HomeScreen() {
       <section className="px-4 pt-6 pb-4">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-muted-foreground">{getGreeting()}</p>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight mt-0.5">
-              {currentUser?.name.split(" ")[0]}
-            </h1>
-            <p className="text-base font-semibold text-foreground mt-2">
-              {t.findQueueToJoin}
-            </p>
+            {locationsReady ? (
+              <>
+                <p className="text-sm font-medium text-muted-foreground">{getGreeting()}</p>
+                <h1 className="text-2xl font-bold text-foreground tracking-tight mt-0.5">
+                  {currentUser?.name.split(" ")[0]}
+                </h1>
+                <p className="text-base font-semibold text-foreground mt-2">
+                  {t.findQueueToJoin}
+                </p>
+              </>
+            ) : (
+              <div data-testid="home-greeting-skeleton" className="space-y-2" aria-busy="true">
+                <div className="h-4 w-24 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+                <div className="h-8 w-40 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+                <div className="h-5 w-52 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -201,16 +211,24 @@ export function HomeScreen() {
 
       {/* Panel 2 — search + quick actions (3 tiles) */}
       <section className="px-4 pb-4 border-b border-border/80">
-        <div className="relative mb-4">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder={t.searchClinicsBanks}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-12 h-14 bg-muted border-0 rounded-2xl text-base font-medium placeholder:text-muted-foreground"
+        {locationsReady ? (
+          <div className="relative mb-4">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder={t.searchClinicsBanks}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-12 h-14 bg-muted border-0 rounded-2xl text-base font-medium placeholder:text-muted-foreground"
+            />
+          </div>
+        ) : (
+          <div
+            data-testid="home-search-skeleton"
+            className="mb-4 h-14 animate-pulse rounded-2xl bg-muted motion-reduce:animate-none"
+            aria-busy="true"
           />
-        </div>
+        )}
 
         <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
           <QuickActionTile

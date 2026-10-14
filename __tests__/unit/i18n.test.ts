@@ -37,6 +37,10 @@ describe("Internationalisation", () => {
     for (const lang of langs) {
       const t = getTranslations(lang)
       expect(t.splashTagline.length).toBeGreaterThan(0)
+      expect(t.signingYouIn.length).toBeGreaterThan(0)
+      expect(t.signInLinkExpired.length).toBeGreaterThan(0)
+      expect(t.signInTakingLonger.length).toBeGreaterThan(0)
+      expect(t.backToSignIn.length).toBeGreaterThan(0)
     }
   })
 

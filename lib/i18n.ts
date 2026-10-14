@@ -202,6 +202,10 @@ export type TranslationKeys = {
   loginCodeSentToEmail: string
   enterLoginCodeFromEmail: string
   signingIn: string
+  signingYouIn: string
+  signInLinkExpired: string
+  signInTakingLonger: string
+  backToSignIn: string
 
   splashTagline: string
   cookieTitle: string
@@ -967,6 +971,10 @@ const en = {
   loginCodeSentToEmail: "We sent a login code to {email}. Type it to sign in.",
   enterLoginCodeFromEmail: "Type the login code from your email.",
   signingIn: "Signing in...",
+  signingYouIn: "Signing you in",
+  signInLinkExpired: "That sign-in link expired. Please try again.",
+  signInTakingLonger: "Taking longer than usual",
+  backToSignIn: "Back to sign in",
 
   splashTagline: "Where Waiting Ends",
   cookieTitle: "QFlow uses essential cookies",
@@ -1163,6 +1171,10 @@ const af = {
   loginCodeSentToEmail: "Ons het 'n aanmeldingskode na {email} gestuur. Tik dit in om aan te meld.",
   enterLoginCodeFromEmail: "Tik die aanmeldingskode uit jou e-pos in.",
   signingIn: "Besig om aan te meld...",
+  signingYouIn: "Ons meld jou aan",
+  signInLinkExpired: "Daardie aanmeldskakel het verval. Probeer asseblief weer.",
+  signInTakingLonger: "Dit neem langer as gewoonlik",
+  backToSignIn: "Terug na aanmeld",
 
   splashTagline: "Slaan die ry oor. Nie die diens nie.",
   cookieTitle: "QFlow gebruik noodsaaklike koekies",
@@ -1359,6 +1371,10 @@ const zu = {
   loginCodeSentToEmail: "Sithumele ikhodi yokungena ku-{email}. Yifake ukuze ungene.",
   enterLoginCodeFromEmail: "Faka ikhodi yokungena evela ku-imeyili yakho.",
   signingIn: "Siyangena...",
+  signingYouIn: "Siyakungenisa",
+  signInLinkExpired: "Isixhumanisi sokungena siphelelwe yisikhathi. Zama futhi.",
+  signInTakingLonger: "Kuthatha isikhathi eside kunokujwayelekile",
+  backToSignIn: "Buyela ekungeneni",
 
   splashTagline: "Yeqa umgca. Ungaweqi isevisi.",
   cookieTitle: "I-QFlow isebenzisa amakhukhi abalulekile",
@@ -1555,6 +1571,10 @@ const st = {
   loginCodeSentToEmail: "Re rometse khoutu ea ho kena ho {email}. E kenye ho kena.",
   enterLoginCodeFromEmail: "Kenya khoutu ea ho kena ho tsoa imeileng ea hao.",
   signingIn: "Re kena...",
+  signingYouIn: "Re o kenya",
+  signInLinkExpired: "Sehokelo sa ho kena se felletse ke nako. Ka kopo leka hape.",
+  signInTakingLonger: "Ho nka nako e telele ho feta ka mehla",
+  backToSignIn: "Kgutlela ho keneng",
 
   splashTagline: "Tlola moleng. Se tlolo tšebeletso.",
   cookieTitle: "QFlow e sebelisa li-cookie tsa bohlokoa",
@@ -1751,6 +1771,10 @@ const xh = {
   loginCodeSentToEmail: "Sithumele ikhowudi yokungena ku-{email}. Yifake ukuze ungene.",
   enterLoginCodeFromEmail: "Ngenisa ikhowudi yokungena evela kwi-imeyile yakho.",
   signingIn: "Siyangena...",
+  signingYouIn: "Siyakungenisa",
+  signInLinkExpired: "Ikhonkco yokungena liphelelwe lixesha. Nceda uzame kwakhona.",
+  signInTakingLonger: "Kuthatha ixesha elide kunesiqhelo",
+  backToSignIn: "Buyela ekungeneni",
 
   splashTagline: "Tsiba umgca. Ungawutshibi inkonzo.",
   cookieTitle: "I-QFlow isebenzisa ii-cookies ezibalulekileyo",
@@ -1947,6 +1971,10 @@ const tn = {
   loginCodeSentToEmail: "Re rometse khoutu ya go tsena go {email}. E tsenye go tsena.",
   enterLoginCodeFromEmail: "Tsenya khoutu ya go tsena e e tswang mo imeileng ya gago.",
   signingIn: "Re tsena...",
+  signingYouIn: "Re go tsaya",
+  signInLinkExpired: "Kgolagano ya go tsena e fedile. Tsweetswee leka gape.",
+  signInTakingLonger: "Go tsaya nako e e telele go feta ka gale",
+  backToSignIn: "Boela go go tsena",
 
   splashTagline: "Tlola mola. O se tlhole tirelo.",
   cookieTitle: "QFlow e dirisa di-cookie tse di botlhokwa",

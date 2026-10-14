@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import { Button } from "@/components/ui/button"
-import { QFlowLogo } from "@/components/qflow/qflow-logo"
 import {
   homePathForRole,
   pathAllowedForRole,
@@ -12,6 +11,8 @@ import {
   type AppRole,
 } from "@/lib/routes"
 import { useRouter } from "next/navigation"
+import { QFlowSplash } from "@/components/qflow/qflow-splash"
+import { authSplashIsActive } from "@/lib/auth-splash"
 
 export function SplashScreen() {
   const {
@@ -62,6 +63,10 @@ export function SplashScreen() {
   }
 
   useEffect(() => {
+    if (authSplashIsActive()) {
+      if (!isAuthLoading) proceedToNextScreen()
+      return
+    }
     if (isAuthLoading) return
 
     const cookieAccepted =
@@ -89,39 +94,10 @@ export function SplashScreen() {
     proceedToNextScreen()
   }
 
+  if (authSplashIsActive()) return null
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-primary">
-      <div
-        className="absolute inset-0 overflow-hidden opacity-10"
-        style={{
-          backgroundImage: "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
-          backgroundSize: "40px 40px",
-        }}
-      />
-
-      <div className="relative z-10 flex flex-col items-center qflow-logo-pop">
-        <QFlowLogo
-          size="xl"
-          animate
-          variant="frosted"
-          className="mb-2"
-        />
-        <h1 className="qflow-wordmark-in text-4xl font-bold text-white tracking-tight mb-2">
-          QFlow
-        </h1>
-        <p className="text-white/80 text-lg font-medium" style={{ animation: "qflow-wordmark-in 0.5s ease-out 1s both" }}>
-          {t.splashTagline}
-        </p>
-      </div>
-
-      {!animationComplete && (
-        <div className="absolute bottom-20 flex gap-1.5">
-          <span className="qflow-load-dot w-2 h-2 rounded-full bg-white/60" />
-          <span className="qflow-load-dot w-2 h-2 rounded-full bg-white/60" />
-          <span className="qflow-load-dot w-2 h-2 rounded-full bg-white/60" />
-        </div>
-      )}
-
+    <QFlowSplash subtitle={t.splashTagline} showDots={!animationComplete}>
       {showCookieNotice && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-end">
           <div className="w-full bg-white rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom">
@@ -145,6 +121,6 @@ export function SplashScreen() {
           </div>
         </div>
       )}
-    </div>
+    </QFlowSplash>
   )
 }
