@@ -64,7 +64,9 @@ export function SplashScreen() {
 
   useEffect(() => {
     if (authSplashIsActive()) {
-      if (!isAuthLoading) proceedToNextScreen()
+      // A missing user during the OAuth callback is still unknown. Only leave
+      // once a session has been applied. The callback cover owns failure navigation.
+      if (!isAuthLoading && isAuthenticated && currentUser) proceedToNextScreen()
       return
     }
     if (isAuthLoading) return
@@ -85,8 +87,9 @@ export function SplashScreen() {
       proceedToNextScreen()
     }, 2500)
     return () => clearTimeout(timer)
+    // proceedToNextScreen reads the latest route snapshot from routeRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthLoading, navigateTo])
+  }, [isAuthLoading, isAuthenticated, currentUser, navigateTo])
 
   const dismissCookieNotice = () => {
     localStorage.setItem("qflow_cookie_accepted", "true")

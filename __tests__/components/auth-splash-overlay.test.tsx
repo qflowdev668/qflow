@@ -14,9 +14,12 @@ const auth = {
   session: null as { user: { id: string; user_metadata?: Record<string, unknown> } } | null,
   hangSession: false,
   hangProfile: false,
+  nullReads: 0,
   role: "user" as "user" | "staff" | "admin",
   exchange: jest.fn(async () => ({ error: null as { message: string } | null })),
 }
+
+const appAuth = { isAuthLoading: false }
 
 jest.mock("next/navigation", () => ({
   usePathname: () => nav.pathname,
@@ -54,13 +57,21 @@ jest.mock("@/hooks/use-t", () => ({
     template.replaceAll("{name}", vars.name ?? ""),
 }))
 
+jest.mock("@/lib/app-context", () => ({
+  useApp: () => ({ isAuthLoading: appAuth.isAuthLoading }),
+}))
+
 jest.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
     auth: {
-      getSession: () =>
-        auth.hangSession
-          ? new Promise(() => undefined)
-          : Promise.resolve({ data: { session: auth.session } }),
+      getSession: () => {
+        if (auth.hangSession) return new Promise(() => undefined)
+        if (auth.nullReads > 0) {
+          auth.nullReads -= 1
+          return Promise.resolve({ data: { session: null } })
+        }
+        return Promise.resolve({ data: { session: auth.session } })
+      },
       exchangeCodeForSession: () => auth.exchange(),
     },
   }),
@@ -112,7 +123,9 @@ describe("AuthSplashOverlay", () => {
     auth.session = null
     auth.hangSession = false
     auth.hangProfile = false
+    auth.nullReads = 0
     auth.role = "user"
+    appAuth.isAuthLoading = false
     window.sessionStorage.removeItem("qflow_last_route")
     auth.exchange.mockReset()
     auth.exchange.mockImplementation(async () => {
@@ -147,6 +160,47 @@ describe("AuthSplashOverlay", () => {
     expect(nav.replace).toHaveBeenCalledWith("/home")
     const target = String(nav.replace.mock.calls[0][0])
     expect(target).not.toMatch(/OAuth|PKCE|error_description/)
+    expect(nav.replace.mock.calls.every((call) => !String(call[0]).startsWith("/login"))).toBe(true)
+  })
+
+  it("does not open login when getSession is briefly null after a successful exchange", async () => {
+    auth.nullReads = 3
+    auth.exchange.mockImplementation(async () => {
+      auth.session = { user: { id: "user-1" } }
+      return { error: null }
+    })
+
+    render(<AuthSplashOverlay />)
+    await act(async () => {
+      for (let step = 0; step < 10; step += 1) {
+        await Promise.resolve()
+        jest.advanceTimersByTime(50)
+      }
+    })
+
+    const targets = nav.replace.mock.calls.map((call) => String(call[0]))
+    expect(targets.some((href) => href.startsWith("/login"))).toBe(false)
+    expect(nav.replace).toHaveBeenCalledWith("/home")
+  })
+
+  it("keeps the cover mounted over login and home until auth has resolved", async () => {
+    const view = render(<AuthSplashOverlay />)
+    await flush()
+    expect(nav.replace).toHaveBeenCalledWith("/home")
+    expect(nav.replace.mock.calls.every((call) => !String(call[0]).startsWith("/login"))).toBe(true)
+
+    appAuth.isAuthLoading = true
+    nav.pathname = "/login/"
+    view.rerender(<AuthSplashOverlay />)
+    expect(screen.getByTestId("post-sign-in-skeleton")).toBeTruthy()
+
+    nav.pathname = "/home/"
+    view.rerender(<AuthSplashOverlay />)
+    expect(screen.getByTestId("post-sign-in-skeleton")).toBeTruthy()
+
+    appAuth.isAuthLoading = false
+    view.rerender(<AuthSplashOverlay />)
+    expect(screen.queryByTestId("post-sign-in-skeleton")).toBeNull()
   })
 
   it("drops the skeleton as soon as the destination replaces", async () => {

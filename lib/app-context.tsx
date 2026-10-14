@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,6 +17,18 @@ import {
   googleOAuthSignInOptions,
   oauthCallbackRedirectUrl,
 } from "@/lib/auth-redirect"
+import {
+  authCallbackPending,
+  loginRedirectFor,
+  noteAuthEvent,
+  type AuthResolution,
+} from "@/lib/auth-callback-flow"
+import {
+  beginOAuthResolution,
+  finishOAuthResolution,
+  oauthResolutionPending,
+  subscribeOAuthResolution,
+} from "@/lib/auth-resolution"
 import { unlockPrivateAccess } from "@/lib/private-access"
 import {
   STAFF_QUEUE_POLL_MS,
@@ -375,6 +388,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(supabaseEnabled)
+  const [oauthPending, setOauthPending] = useState(false)
+  const [authResolution, setAuthResolution] = useState<AuthResolution>({
+    resolved: false,
+    hasUser: false,
+    awaitingSignIn: false,
+  })
   const [authError, setAuthError] = useState<string | null>(null)
   const [passwordResetEmail, setPasswordResetEmail] = useState<string | null>(null)
   const [emailOtpEmail, setEmailOtpEmail] = useState<string | null>(null)
@@ -932,6 +951,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.location.replace(`/auth/callback/${qs}`)
   }, [])
 
+  useEffect(() => subscribeOAuthResolution(() => setOauthPending(oauthResolutionPending())), [])
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return
+    if (!authCallbackPending(pathname, window.location.search)) return
+    beginOAuthResolution()
+    setOauthPending(true)
+    setAuthResolution((state) =>
+      noteAuthEvent(state, { type: "INITIAL_SESSION", hasSession: false, callbackPending: true })
+    )
+  }, [pathname])
+
   // Track the Supabase session
   useEffect(() => {
     if (!supabase) {
@@ -1002,6 +1033,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data } = await supabase.auth.getUser()
       if (cancelled) return
 
+      const callbackStillPending =
+        typeof window !== "undefined" &&
+        (authCallbackPending(window.location.pathname, window.location.search) ||
+          oauthResolutionPending())
+      if (!data.user && callbackStillPending) {
+        // The code has not been exchanged yet. Missing user means "unknown",
+        // not signed out.
+        return
+      }
+
       if (data.user) {
         if (onResetRoute) {
           if (data.user.email) {
@@ -1057,7 +1098,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        if (event === "INITIAL_SESSION" && !session?.user) {
+          setAuthResolution((state) =>
+            noteAuthEvent(state, {
+              type: event,
+              hasSession: false,
+              callbackPending:
+                oauthResolutionPending() ||
+                (typeof window !== "undefined" &&
+                  authCallbackPending(window.location.pathname, window.location.search)),
+            })
+          )
+          return
+        }
+
         if (event === "SIGNED_OUT") {
+          if (
+            oauthResolutionPending() ||
+            (typeof window !== "undefined" &&
+              authCallbackPending(window.location.pathname, window.location.search))
+          ) {
+            // Token swap during OAuth can emit SIGNED_OUT before SIGNED_IN.
+            return
+          }
           // Supabase can emit a transient SIGNED_OUT during verifyOtp / token
           // swap. Clearing the user and navigating immediately bounces staff
           // off /staff ~1–2s after a successful OTP login. Wait, then confirm
@@ -1134,6 +1197,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   setAuthError(privilegedGoogleBlockMessage(role))
                   navigateTo(privilegedGoogleLoginScreen(role))
                 }
+                setIsAuthLoading(false)
+                finishOAuthResolution()
                 return
               }
 
@@ -1143,8 +1208,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 (user.user_metadata?.name as string) ||
                   (user.user_metadata?.full_name as string)
               )
-              if (cancelled || !profile) return
-              if (isFreshSignIn && (await rejectFreshPrivilegedSignIn(user, profile))) return
+              if (cancelled || !profile) {
+                setIsAuthLoading(false)
+                finishOAuthResolution()
+                return
+              }
+              if (isFreshSignIn && (await rejectFreshPrivilegedSignIn(user, profile))) {
+                setIsAuthLoading(false)
+                finishOAuthResolution()
+                return
+              }
               setAuthError(null)
               if (profile.role === "staff") confirmStaffOtp()
               if (profile.role === "admin") confirmAdminOtp()
@@ -1159,6 +1232,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 })
               }
               goToRoleHome(profile.role)
+              setAuthResolution({ resolved: true, hasUser: true, awaitingSignIn: false })
+              setIsAuthLoading(false)
+              finishOAuthResolution()
             })()
           }, 0)
         }
@@ -1174,13 +1250,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Client route guard (static export has no Edge proxy): after auth resolves,
   // bounce anonymous users off protected paths and enforce role homes.
   useEffect(() => {
-    if (isAuthLoading) return
+    if (isAuthLoading || oauthPending || authResolution.awaitingSignIn) return
     if (typeof window === "undefined") return
 
     const path = pathname.split("?")[0] || "/"
-    if (isPublicPath(path)) return
-
-    if (!currentUser) {
+    const redirect = loginRedirectFor(
+      {
+        resolved: authResolution.resolved || !isAuthLoading,
+        hasUser: Boolean(currentUser),
+        awaitingSignIn: authResolution.awaitingSignIn,
+      },
+      path
+    )
+    if (redirect !== "/login") {
+      if (!currentUser || isPublicPath(path)) return
+    } else if (!currentUser) {
       const returnUrl = `${window.location.pathname}${window.location.search}`
       const params = new URLSearchParams()
       if (returnUrl && returnUrl !== "/login" && !returnUrl.startsWith("/login?")) {
@@ -1199,7 +1283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         router.replace(blocked)
       })
     }
-  }, [isAuthLoading, currentUser, pathname, router])
+  }, [isAuthLoading, oauthPending, authResolution.awaitingSignIn, authResolution.resolved, currentUser, pathname, router])
 
   // Realtime: queue movements, location busyness, and new notifications
   useEffect(() => {

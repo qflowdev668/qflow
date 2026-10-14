@@ -2,6 +2,8 @@ import {
   destinationAfterSignIn,
   firstNameFromSessionUser,
   isCustomerHomePath,
+  loginRedirectFor,
+  noteAuthEvent,
   hasStoredAuthSession,
   planAuthCallback,
   splashHoldMs,
@@ -34,6 +36,37 @@ describe("planAuthCallback", () => {
   it("holds the splash for the remainder of the minimum time", () => {
     expect(splashHoldMs(1000, 1100)).toBe(300)
     expect(splashHoldMs(1000, 1500)).toBe(0)
+  })
+
+  it("does not send a null INITIAL_SESSION to login when SIGNED_IN follows", () => {
+    let state = { resolved: false, hasUser: false, awaitingSignIn: false }
+    state = noteAuthEvent(state, {
+      type: "INITIAL_SESSION",
+      hasSession: false,
+      callbackPending: true,
+    })
+    expect(loginRedirectFor(state, "/home")).toBeNull()
+    expect(loginRedirectFor(state, "/auth/callback")).toBeNull()
+
+    state = noteAuthEvent(state, {
+      type: "SIGNED_IN",
+      hasSession: true,
+      callbackPending: true,
+    })
+    expect(state.hasUser).toBe(true)
+    expect(loginRedirectFor(state, "/home")).toBeNull()
+  })
+
+  it("redirects to login only after auth resolves with no session", () => {
+    const signedOut = noteAuthEvent(
+      { resolved: false, hasUser: false, awaitingSignIn: false },
+      { type: "INITIAL_SESSION", hasSession: false, callbackPending: false }
+    )
+    expect(loginRedirectFor(signedOut, "/home")).toBe("/login")
+    expect(loginRedirectFor(signedOut, "/login")).toBeNull()
+    expect(
+      loginRedirectFor({ resolved: false, hasUser: false, awaitingSignIn: false }, "/home")
+    ).toBeNull()
   })
 
   it("treats only customer Home as the Home skeleton destination", () => {

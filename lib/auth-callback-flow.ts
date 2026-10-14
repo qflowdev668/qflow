@@ -1,4 +1,4 @@
-import { homePathForRole, pathAllowedForRole, type AppRole } from "@/lib/routes"
+import { homePathForRole, isPublicPath, pathAllowedForRole, type AppRole } from "@/lib/routes"
 
 export const AUTH_SPLASH_MIN_MS = 400
 export const AUTH_SPLASH_MAX_MS = 8000
@@ -28,6 +28,52 @@ export function hasStoredAuthSession(): boolean {
 export function isAuthCallbackPath(pathname: string): boolean {
   const path = pathname.replace(/\/$/, "") || "/"
   return path === "/auth/callback"
+}
+
+/** True while /auth/callback still has a code that has not been exchanged. */
+export function authCallbackPending(pathname: string, search: string): boolean {
+  if (!isAuthCallbackPath(pathname)) return false
+  const raw = search.startsWith("?") ? search.slice(1) : search
+  return Boolean(new URLSearchParams(raw).get("code"))
+}
+
+export type AuthResolution = {
+  /** False while the session is still unknown. */
+  resolved: boolean
+  hasUser: boolean
+  /** Null INITIAL_SESSION during OAuth. SIGNED_IN may still arrive. */
+  awaitingSignIn: boolean
+}
+
+/**
+ * A null INITIAL_SESSION on the callback is not a signed-out result.
+ * SIGNED_IN after that null event is the success path.
+ */
+export function noteAuthEvent(
+  state: AuthResolution,
+  event: { type: string; hasSession: boolean; callbackPending: boolean }
+): AuthResolution {
+  if (event.type === "INITIAL_SESSION" && !event.hasSession) {
+    if (event.callbackPending) {
+      return { resolved: false, hasUser: false, awaitingSignIn: true }
+    }
+    return { resolved: true, hasUser: false, awaitingSignIn: false }
+  }
+  if ((event.type === "SIGNED_IN" || event.type === "INITIAL_SESSION") && event.hasSession) {
+    return { resolved: true, hasUser: true, awaitingSignIn: false }
+  }
+  if (event.type === "SIGNED_OUT" && !event.hasSession) {
+    return { resolved: true, hasUser: false, awaitingSignIn: false }
+  }
+  return state
+}
+
+/** Send anonymous visitors to login only after auth has resolved with no user. */
+export function loginRedirectFor(state: AuthResolution, pathname: string): "/login" | null {
+  if (!state.resolved || state.awaitingSignIn || state.hasUser) return null
+  const path = pathname.split("?")[0] || "/"
+  if (isPublicPath(path)) return null
+  return "/login"
 }
 
 export function hasOAuthError(params: URLSearchParams): boolean {

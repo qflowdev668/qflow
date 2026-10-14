@@ -24,6 +24,8 @@ import {
   privilegedGoogleLoginPath,
   signOutIfPrivilegedGoogle,
 } from "@/lib/privileged-session-guard"
+import { finishOAuthResolution } from "@/lib/auth-resolution"
+import { useApp } from "@/lib/app-context"
 import { readLastRoute, type AppRole } from "@/lib/routes"
 
 function sleep(ms: number): Promise<void> {
@@ -40,6 +42,7 @@ export function AuthSplashOverlay() {
   const pathname = usePathname() || ""
   const router = useRouter()
   const t = useT()
+  const { isAuthLoading } = useApp()
   const onCallback = isAuthCallbackPath(pathname)
   const [visible, setVisible] = useState(() => onCallback || authSplashIsActive())
   const [homeCover, setHomeCover] = useState(false)
@@ -75,11 +78,17 @@ export function AuthSplashOverlay() {
       setVisible(true)
       return
     }
+    // Stay up through /login if the session is still being applied, so a
+    // success path never reveals the login page.
+    if (authSplashIsActive() && isAuthLoading) {
+      setVisible(true)
+      return
+    }
     setVisible(false)
     clearAuthSplash()
     startedAt.current = 0
     deadlineAt.current = 0
-  }, [onCallback])
+  }, [onCallback, isAuthLoading])
 
   useEffect(() => {
     if (!onCallback) return
@@ -107,6 +116,9 @@ export function AuthSplashOverlay() {
       const hold = home ? 0 : splashHoldMs(startedAt.current || Date.now(), Date.now())
       if (hold) await sleep(hold)
       if (!active || timedOut.current) return
+      if (href === "/login" || href.startsWith("/login?") || href.startsWith("/login/")) {
+        finishOAuthResolution()
+      }
       routerRef.current.replace(href)
     }
 
@@ -148,6 +160,7 @@ export function AuthSplashOverlay() {
         return
       }
 
+      let exchangeSucceeded = false
       if (plan.kind === "exchange") {
         if (exchangeGuard.current !== plan.code) {
           exchangeGuard.current = plan.code
@@ -163,15 +176,30 @@ export function AuthSplashOverlay() {
             await replaceAfterHold(expiredLogin)
             return
           }
+        } else {
+          exchangeSucceeded = true
         }
       }
 
-      const session =
-        raced.session ??
-        (await Promise.race([
-          supabase.auth.getSession().then((result) => result.data.session ?? null),
+      const readSession = () =>
+        supabase.auth.getSession().then((result) => result.data.session ?? null)
+
+      let session = raced.session
+      if (!session?.user?.id && exchangeSucceeded) {
+        // A null getSession right after a successful exchange is still pending.
+        // Do not send the user to /login until the session is actually missing.
+        const deadline = Date.now() + AUTH_SPLASH_MAX_MS
+        while (!session?.user?.id && active && !timedOut.current && Date.now() < deadline) {
+          session = await readSession()
+          if (session?.user?.id) break
+          await sleep(50)
+        }
+      } else if (!session?.user?.id) {
+        session = await Promise.race([
+          readSession(),
           sleep(AUTH_SESSION_WAIT_MS).then(() => null),
-        ]))
+        ])
+      }
       const user = session?.user
       if (!active || timedOut.current) return
       if (!user?.id) {
