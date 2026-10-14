@@ -1,3 +1,5 @@
+import { stripAuthSearchParams } from "@/lib/auth-code"
+
 export type AppRole = "user" | "staff" | "admin"
 
 export const LAST_ROUTE_KEY = "qflow_last_route"
@@ -158,13 +160,21 @@ export function shouldPersistPath(pathname: string): boolean {
 
 export function readLastRoute(): string | null {
   if (typeof window === "undefined") return null
-  return window.sessionStorage.getItem(LAST_ROUTE_KEY)
+  const stored = window.sessionStorage.getItem(LAST_ROUTE_KEY)
+  if (!stored) return null
+  const queryAt = stored.indexOf("?")
+  if (queryAt === -1) return stored
+  const cleaned = `${stored.slice(0, queryAt)}${stripAuthSearchParams(stored.slice(queryAt))}`
+  if (cleaned !== stored) {
+    window.sessionStorage.setItem(LAST_ROUTE_KEY, cleaned)
+  }
+  return cleaned
 }
 
 export function writeLastRoute(pathname: string): void {
   if (typeof window === "undefined") return
   if (!shouldPersistPath(pathname)) return
-  const search = window.location.search ?? ""
+  const search = stripAuthSearchParams(window.location.search ?? "")
   window.sessionStorage.setItem(LAST_ROUTE_KEY, `${pathname}${search}`)
 }
 

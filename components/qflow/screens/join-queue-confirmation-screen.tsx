@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useApp } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import type { TranslationKeys } from "@/lib/i18n"
+import { isPkceVerifierError } from "@/lib/auth-code"
 import { estimateWait } from "@/lib/supabase/helpers"
 import { TopBar } from "@/components/qflow/top-bar"
 import { Button } from "@/components/ui/button"
@@ -309,7 +310,7 @@ export function JoinQueueConfirmationScreen() {
       </div>
 
       <div className="p-4 pb-8 space-y-3 border-t border-border bg-card">
-        {authError && (
+        {authError && !isPkceVerifierError(authError) && (
           <p className="text-sm text-destructive text-center px-2" role="alert">
             {authError}
           </p>

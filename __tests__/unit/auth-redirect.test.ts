@@ -24,6 +24,15 @@ describe("auth redirect URLs", () => {
     expect(oauthCallbackRedirectUrl()).not.toContain("localhost:3000")
   })
 
+  it("does not rewrite www into the apex host", () => {
+    expect(oauthCallbackRedirectUrl("https://www.useqflow.app")).toBe(
+      "https://www.useqflow.app/auth/callback/"
+    )
+    expect(oauthCallbackRedirectUrl("https://useqflow.app")).toBe(
+      "https://useqflow.app/auth/callback/"
+    )
+  })
+
   it("passes redirectTo derived from origin to signInWithOAuth options", () => {
     const origin = "https://useqflow.app"
     const opts = googleOAuthSignInOptions(origin)

@@ -9,6 +9,7 @@ import { TopBar } from "@/components/qflow/top-bar"
 import { Eye, EyeOff, User, Mail, Lock, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isStrongPassword } from "@/lib/password"
+import { SUPPORT_EMAIL } from "@/lib/support-email"
 import { PasswordRules } from "@/components/qflow/password-rules"
 
 export function RegisterScreen() {
@@ -385,7 +386,7 @@ export function RegisterScreen() {
               </div>
 
               <p className="text-sm text-muted-foreground">
-                {t.termsContact} <span className="text-primary">support@qflow.co.za</span>
+                {t.termsContact} <span className="text-primary">{SUPPORT_EMAIL}</span>
               </p>
             </div>
 

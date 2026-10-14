@@ -650,6 +650,7 @@ export type TranslationKeys = {
   staffOrAdminContactLink: string
   helpSectionContact: string
   helpContactDesc: string
+  askQflowDisclosure: string
   helpSendMessage: string
   helpSectionTechnical: string
   helpCheckSystemStatus: string
@@ -972,6 +973,8 @@ const en = {
   cookieDesc: "We use cookies to keep you signed in and save your place in line. No ads or tracking cookies.",
   cookieAccept: "OK, got it",
   cookieContinue: "Continue",
+  askQflowDisclosure:
+    "Questions are processed by Meta Llama on Cloudflare and saved to help us improve QFlow.",
 }
 
 const af = {
@@ -1166,6 +1169,8 @@ const af = {
   cookieDesc: "Ons gebruik koekies om jou aan te hou aangemeld en jou plek in die ry te stoor. Geen advertensie- of dopkoekies nie.",
   cookieAccept: "OK, ek verstaan",
   cookieContinue: "Gaan voort",
+  askQflowDisclosure:
+    "Vrae word deur Meta Llama op Cloudflare verwerk en gestoor om QFlow te verbeter.",
 }
 
 const zu = {
@@ -1360,6 +1365,8 @@ const zu = {
   cookieDesc: "Sisebenzisa amakhukhi ukukugcina ungene futhi silondoloze indawo yakho emgqeni. Akukho makhukhi wokukhangisa noma wokulandelela.",
   cookieAccept: "Kulungile, ngiyezwa",
   cookieContinue: "Qhubeka",
+  askQflowDisclosure:
+    "Imibuzo icutshungulwa ngu-Meta Llama ku-Cloudflare futhi igcinwa ukuze sithuthukise i-QFlow.",
 }
 
 const st = {
@@ -1554,6 +1561,8 @@ const st = {
   cookieDesc: "Re sebelisa li-cookie ho u boloka o kene le ho boloka sebaka sa hao moleng. Ha ho li-cookie tsa lipapatso kapa tsa ho u latelela.",
   cookieAccept: "OK, ke utloisise",
   cookieContinue: "Tsoela pele",
+  askQflowDisclosure:
+    "Dipotso di sebetswa ke Meta Llama ho Cloudflare mme di bolokwa ho ntlafatsa QFlow.",
 }
 
 const xh = {
@@ -1748,6 +1757,8 @@ const xh = {
   cookieDesc: "Sisebenzisa ii-cookies ukukugcina ungene kwaye silondoloze indawo yakho emgceni. Akukho zii-cookies zezipapasho okanye zokulandelela.",
   cookieAccept: "Kulungile, ndiyiva",
   cookieContinue: "Qhubeka",
+  askQflowDisclosure:
+    "Imibuzo iqwalaselwa ngu-Meta Llama kwi-Cloudflare kwaye igcinwa ukuze siphucule i-QFlow.",
 }
 
 const tn = {
@@ -1942,6 +1953,8 @@ const tn = {
   cookieDesc: "Re dirisa di-cookie go go boloka o tsene le go boloka lefelo la gago mo moleng. Ga go na di-cookie tsa dipapatso kgotsa tsa go go latela.",
   cookieAccept: "Go siame, ke a utlwisisa",
   cookieContinue: "Tswelela",
+  askQflowDisclosure:
+    "Dipotso di dirwa ke Meta Llama mo Cloudflare mme di bolokiwa go tokafatsa QFlow.",
 }
 
 export const translations: Record<Language, TranslationKeys> = {

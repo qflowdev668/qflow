@@ -2,8 +2,9 @@
  * OAuth / email-link redirect target for Supabase Auth.
  *
  * Trailing slash matches Next.js `trailingSlash: true` (`/auth/callback/`).
- * On useqflow.app we always force the production origin so a bad env/cache
- * can never send Google OAuth back to localhost.
+ * The return host is the page origin so the PKCE verifier cookie and the
+ * callback stay on the same host. www and the apex host are not rewritten
+ * into each other.
  */
 export function oauthCallbackRedirectUrl(origin?: string): string {
   let base =
@@ -11,16 +12,17 @@ export function oauthCallbackRedirectUrl(origin?: string): string {
     (typeof window !== "undefined" ? window.location.origin : "https://useqflow.app")
 
   if (typeof window !== "undefined") {
-    const host = window.location.hostname
-    if (host === "useqflow.app" || host.endsWith(".useqflow.app")) {
-      base = "https://useqflow.app"
+    let baseHost = ""
+    try {
+      baseHost = new URL(base).hostname
+    } catch {
+      baseHost = ""
     }
-  }
-
-  // Absolute safety: never emit localhost as an OAuth return URL from a prod build.
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(base.replace(/\/$/, ""))) {
-    if (typeof window !== "undefined" && !/^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
-      base = "https://useqflow.app"
+    const pageIsLocal = /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
+    const baseIsLocal = /^(localhost|127\.0\.0\.1)$/i.test(baseHost)
+    // A baked localhost origin must not leave a page that is already on a public host.
+    if (baseIsLocal && !pageIsLocal) {
+      base = window.location.origin
     }
   }
 

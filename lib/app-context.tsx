@@ -889,18 +889,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [supabase, currentUser]
   )
 
-  // Surface OAuth errors from /auth/callback
+  // Show a callback error on a login screen once, then drop it from the URL.
+  // A session means the code exchange already worked, so the message is stale.
+  // Password sign-in does not read this query.
   useEffect(() => {
     if (typeof window === "undefined") return
-    const params = new URLSearchParams(window.location.search)
-    const err = params.get("auth_error")
-    if (err) {
-      setAuthError(err)
-      window.history.replaceState({}, "", window.location.pathname)
+    const url = new URL(window.location.href)
+    const err = url.searchParams.get("auth_error")
+    if (!err) return
+    url.searchParams.delete("auth_error")
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`)
+    const path = url.pathname.replace(/\/$/, "") || "/"
+    const onLogin = path === "/login" || path.startsWith("/login/")
+    if (!onLogin) {
+      setAuthError(null)
+      return
     }
-  }, [])
+    let cancelled = false
+    void (async () => {
+      const session = supabase ? (await supabase.auth.getSession()).data.session : null
+      if (cancelled) return
+      if (session) {
+        setAuthError(null)
+        return
+      }
+      setAuthError(err)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [supabase])
 
   // If Supabase falls back to Site URL with ?code= on a non-callback path, forward it.
+  // Email/password sign-in never puts a code in the URL and does not use this.
   useEffect(() => {
     if (typeof window === "undefined") return
     const path = window.location.pathname.replace(/\/$/, "") || "/"
@@ -1016,6 +1037,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           isDemoUser.current = false
           if (profile.role === "staff") confirmStaffOtp()
           if (profile.role === "admin") confirmAdminOtp()
+          setAuthError(null)
           await loadUserData(data.user.id)
           goToRoleHome(profile.role)
         }
@@ -1123,6 +1145,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               )
               if (cancelled || !profile) return
               if (isFreshSignIn && (await rejectFreshPrivilegedSignIn(user, profile))) return
+              setAuthError(null)
               if (profile.role === "staff") confirmStaffOtp()
               if (profile.role === "admin") confirmAdminOtp()
               await loadUserData(user.id)

@@ -3,9 +3,6 @@
 **Skip the line. Not the service.**
 
 [![Status](https://img.shields.io/badge/status-page-2563EB?style=flat&logo=statuspage&logoColor=white)](https://useqflow.app/status)
-[![Uptime](https://img.shields.io/uptimerobot/status/REPLACE_WITH_MONITOR_API_KEY?label=uptime)](https://useqflow.app/status)
-
-> After creating monitors in UptimeRobot, replace `REPLACE_WITH_MONITOR_API_KEY` with the **monitor-specific API key** (Dashboard → My Monitors → monitor → API / Integrations). Format looks like `m778918918-3e92c097147760ee39d02d36`.
 
 QFlow is a Progressive Web App for South African clinics, banks, and government desks. Customers join a queue from their phone; staff call the next person at the counter; admins manage locations and staff accounts.
 
@@ -76,7 +73,7 @@ Direct navigation to `/login/staff` or `/login/admin` redirects to `/login` unti
 
 **Fallbacks:** Staff who cannot long-press can use `/login?unlock=staff` once shared by an admin. For admin, `/login?unlock=admin` remains an **emergency / onboarding** fallback only — daily access should use the 7-click logo gesture, not the query link. Treat query unlock links like temporary keys; do not post them publicly.
 
-Customers who need staff/admin help see a discreet line on Login and Help: “Staff or admin? Contact your manager for login access” (mailto `support@qflow.co.za`) — it does **not** reveal the phrase or gestures.
+Customers who need staff/admin help see a discreet line on Login and Help: “Staff or admin? Contact your manager for login access” (mailto `SUPPORT_EMAIL`, from `NEXT_PUBLIC_SUPPORT_EMAIL`, default `support@useqflow.app`) — it does **not** reveal the phrase or gestures.
 
 Internal runbook: [STAFF_ONBOARDING.md](./STAFF_ONBOARDING.md).
 
@@ -103,7 +100,7 @@ Internal runbook: [STAFF_ONBOARDING.md](./STAFF_ONBOARDING.md).
 - In-app notifications + optional **Web Push** (no SMS); **Alert Settings** persist preferences (`profiles.notification_preferences` + local cache) and opt out of push categories
 - **You're next** urgency — when position is **#1** and still waiting, `/queue` (normal + **Show big text**) and the Flow Bar use a distinct “about to be called” state (`lib/queue-next-state.ts`), separate from **your turn / serving**
 - Visit ratings after service — only if most recent entry is **`served` within 2 hours** and not already rated
-- **Help** (`/help`) — FAQ, contact (`support@qflow.co.za`), system status, clear local data, and the full **Ask QFlow** card (**Powered by Llama**)
+- **Help** (`/help`) — FAQ, contact (`SUPPORT_EMAIL`, default `support@useqflow.app`), system status, clear local data, and the full **Ask QFlow** card (**Powered by Llama**)
 - **Ask QFlow** — also a sparkle icon and the words **Ask QFlow** on the join sheet and the expanded queue sheet, so help stays on the sheet that is already open
 - **Edit profile** (`/profile/edit`) — display name + **profile photo** upload/remove via FastAPI → Supabase Storage `avatars` bucket (`UserAvatar` shared on Profile / Edit)
 - **POPIA**: download my data + delete account (anonymises queue tickets for stats)
@@ -204,7 +201,7 @@ Ask QFlow is the in-app helper. On **Help** it is a full card with the **Powered
 | Grounding | The system prompt includes a short description of QFlow (join a line, Fast Track, Emergency, map, directions, accessibility, notifications) plus the signed-in user’s **first name** and their active `queue_entries` row (location, position, people ahead, estimated wait, status, priority). A sheet can add the place open on screen. Email and phone are never sent |
 | Limit | 20 messages per user per hour (in-memory counter on the API process) |
 | Log | Supabase table `assistant_messages` (`id`, `user_id`, `message`, `reply`, `created_at`). Users can read only their own rows. The service role inserts. Migration `supabase/migrations/20261013153000_assistant_messages.sql` is applied on the production project |
-| Failure | A Workers AI timeout (45s read) or error returns a short fallback and is logged. The request does not crash |
+| Failure | A Workers AI timeout (15s read) or error returns a short fallback and is logged. The request does not crash |
 
 Try it while signed in: open a place sheet, the blue queue sheet, or [Help](http://127.0.0.1:8000/help), tap **Ask QFlow**, then ask “How long is my wait?” or “What is Fast Track?”.
 
@@ -666,14 +663,15 @@ eslint.config.mjs
 - Column-level `UPDATE` on `profiles` (name, avatar, language, contact fields only)
 - Privilege-escalation trigger blocks client changes to `role` / `location_id`
 - Google OAuth blocked for staff/admin
-- Google OAuth `redirectTo` is always `${window.location.origin}/auth/callback` (see `lib/auth-redirect.ts`). After changing `supabase/config.toml` auth URLs, run `npx supabase config push` so the hosted project Site URL is not stuck on `localhost:3000`.
+- Google OAuth `redirectTo` is always `${window.location.origin}/auth/callback` (see `lib/auth-redirect.ts`). Hosted Site URL and the redirect allow list are updated with `node scripts/fix-supabase-auth-urls.mjs` (Site URL `https://useqflow.app`, plus `https://useqflow.app/**` and `https://www.useqflow.app/**`). Do not use a full `npx supabase config push` for that; it sends every auth setting in `config.toml`.
 - Multi-admin: `admin_accounts` is **service-role only**
 - Visit ratings: server enforces served-within-2h and one rating per `queue_entry`
 - Counter display API returns ticket numbers only (no customer PII)
 - Queue join authenticates the user JWT, then inserts with the **service role** (same pattern as staff walk-ins)
-- Account **export**: `GET /api/user/export-data`
-- Account **delete**: cancel active queues → remove push subs → anonymise `queue_entries` → delete personal rows → delete profile → delete auth user
-- Support contact (help): `support@qflow.co.za`
+- Account **export**: `GET /api/user/export-data` includes the user's `assistantMessages` (Ask QFlow questions and replies)
+- Account **delete**: cancel active queues → remove push subs → anonymise `queue_entries` → delete personal rows, including `assistant_messages` → delete profile → delete auth user. `assistant_messages.user_id` also references `profiles(id)` with `ON DELETE CASCADE`
+- Ask QFlow tells people, under the input, that questions are processed by Meta Llama on Cloudflare and saved to improve QFlow
+- Support contact: `SUPPORT_EMAIL` from `NEXT_PUBLIC_SUPPORT_EMAIL` (default `support@useqflow.app`)
 
 ---
 
@@ -713,6 +711,7 @@ Set these on the **Render web service that serves `useqflow.app`** (and keep `re
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox public token for `/map` — must be present at **`npm run build:web`** time (static export) |
 | `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` / `LLAMA_MODEL` | Server-only Workers AI credentials. Production is set to `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. Not `NEXT_PUBLIC_*` values. A new deploy is required after changing them. `assistant_messages` is already applied on production |
 | `NEXT_PUBLIC_APP_URL` / `ALLOWED_ORIGINS` | `https://useqflow.app` |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | Public support inbox. UI constant `SUPPORT_EMAIL`. Default `support@useqflow.app`. Bake-time (`NEXT_PUBLIC_*`) |
 
 After changing any `NEXT_PUBLIC_*` value, **redeploy** so the static UI rebuilds with the new bake-time env.
 
@@ -737,16 +736,11 @@ See [Health & Status Endpoints](#health--status-endpoints) for what each URL act
    **Do not also monitor `/api/status` by default** — it overlaps with `/status` (the page already loads that JSON). Add `/api/status` only if you want raw JSON alerting separate from the HTML page. Monitoring all three is usually redundant.
 
 3. Set **alert contacts**:
-   - Email: `support@qflow.co.za`
+   - Email: `support@useqflow.app` (`SUPPORT_EMAIL`)
    - SMS (if available on your plan)
 4. Optional: create a public UptimeRobot status page and link it from Help / ops runbooks.
-5. Copy each monitor’s **monitor-specific API key** and paste it into the README badge at the top of this file.
 
-```markdown
-[![Uptime](https://img.shields.io/uptimerobot/status/mXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXX?label=uptime)](https://useqflow.app/status)
-```
-
-Expect `up` / `down` from Shields.io once the key is valid. Prefer the **status page** (`/status`) monitor key for the badge shown above.
+An UptimeRobot Shields badge is optional. Add one at the top of this file only after a real monitor-specific API key exists (Dashboard → My Monitors → monitor → API / Integrations). Do not commit a placeholder key.
 
 ---
 

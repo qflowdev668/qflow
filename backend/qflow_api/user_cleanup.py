@@ -38,7 +38,9 @@ async def purge_user_account(
             prefer="return=minimal",
         )
 
-    for table in ("notifications", "queue_history", "visit_ratings"):
+    # assistant_messages also cascades from profiles(id), deleted here so export/delete
+    # does not depend on that cascade running first.
+    for table in ("notifications", "queue_history", "visit_ratings", "assistant_messages"):
         async with httpx.AsyncClient(timeout=15.0) as client:
             await client.delete(
                 f"{settings.supabase_rest_url}/{table}",

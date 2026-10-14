@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react"
 import { apiFetch, formatApiErrorMessage } from "@/lib/api-client"
+import { useT } from "@/hooks/use-t"
 import { cn } from "@/lib/utils"
 import { Send, Sparkles } from "lucide-react"
 
@@ -32,6 +33,7 @@ export function AskQflowAssistant({
   compact = false,
   className,
 }: AskQflowAssistantProps = {}) {
+  const t = useT()
   const inputId = useId()
   const conversationId = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -266,6 +268,9 @@ export function AskQflowAssistant({
               <Send className="h-5 w-5" aria-hidden />
             </button>
           </form>
+          <p data-testid="ask-qflow-disclosure" className="mt-2 text-xs leading-snug text-muted-foreground">
+            {t.askQflowDisclosure}
+          </p>
         </div>
       )}
     </section>

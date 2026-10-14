@@ -87,6 +87,10 @@ async def export_data(user: dict[str, Any] = Depends(get_current_user)) -> dict[
     ratings = await rest_get("visit_ratings", {"user_id": f"eq.{user_id}", "select": "*"})
     notifications = await rest_get("notifications", {"user_id": f"eq.{user_id}", "select": "*"})
     push = await rest_get("push_subscriptions", {"user_id": f"eq.{user_id}", "select": "id"})
+    assistant_messages = await rest_get(
+        "assistant_messages",
+        {"user_id": f"eq.{user_id}", "select": "id,message,reply,created_at", "order": "created_at.asc"},
+    )
     queue = await rest_get(
         "queue_entries",
         {
@@ -104,6 +108,7 @@ async def export_data(user: dict[str, Any] = Depends(get_current_user)) -> dict[
         "notifications": notifications,
         "pushSubscriptionCount": len(push),
         "queueEntries": queue,
+        "assistantMessages": assistant_messages,
     }
 
 

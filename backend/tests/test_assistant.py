@@ -6,6 +6,7 @@ from main import app
 from qflow_api import assistant as assistant_mod
 from qflow_api.auth import get_current_user
 from qflow_api.rate_limit import ASSISTANT_MAX, reset_rate_limits
+from qflow_api.support_email import support_email
 
 client = TestClient(app)
 
@@ -195,6 +196,11 @@ def test_rate_limit_after_threshold(monkeypatch):
     )
 
 
+def test_support_email_defaults_to_useqflow(monkeypatch):
+    monkeypatch.delenv("NEXT_PUBLIC_SUPPORT_EMAIL", raising=False)
+    assert support_email() == "support@useqflow.app"
+
+
 def test_workers_timeout_returns_fallback(monkeypatch):
     reset_rate_limits()
     _use_workers(monkeypatch)
@@ -229,6 +235,8 @@ def test_workers_timeout_returns_fallback(monkeypatch):
         reset_rate_limits()
 
     assert response.status_code == 200
+    assert assistant_mod.LLAMA_TIMEOUT.read == 15
     assert "couldn't reach the assistant" in response.json()["reply"].lower()
+    assert support_email() in response.json()["reply"]
     assert "model" not in response.json()
     assert "Traceback" not in response.json()["reply"]

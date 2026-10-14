@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useApp, type Location, type PriorityType } from "@/lib/app-context"
 import { useT } from "@/hooks/use-t"
 import type { TranslationKeys } from "@/lib/i18n"
+import { isPkceVerifierError } from "@/lib/auth-code"
 import { estimateWait } from "@/lib/supabase/helpers"
 import { useOfflineStatus } from "@/components/qflow/offline-banner"
 import { Button } from "@/components/ui/button"
@@ -352,7 +353,7 @@ export function JoinQueuePanel({
         </p>
       )}
 
-      {authError && (
+      {authError && !isPkceVerifierError(authError) && (
         <p className="text-sm text-destructive" role="alert">
           {authError}
         </p>

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from qflow_api.auth import get_current_user
 from qflow_api.queue_service import ACTIVE_STATUSES, estimate_wait
 from qflow_api.rate_limit import enforce_assistant_rate_limit
+from qflow_api.support_email import support_email
 from qflow_api.supabase_admin import rest_get, rest_get_one, rest_insert
 
 logger = logging.getLogger("qflow.assistant")
@@ -22,15 +23,16 @@ logger = logging.getLogger("qflow.assistant")
 router = APIRouter(tags=["assistant"])
 
 DEFAULT_LLAMA_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-# Llama 3.3 70B often needs longer than 10s on a cold Workers AI call.
-LLAMA_TIMEOUT = httpx.Timeout(connect=10.0, read=45.0, write=10.0, pool=10.0)
+# Cold Workers AI calls can exceed 10s. 15s still fails closed with the fallback.
+LLAMA_TIMEOUT = httpx.Timeout(connect=10.0, read=15.0, write=10.0, pool=10.0)
 MAX_MESSAGE_CHARS = 800
 MAX_HISTORY_TURNS = 8
 
-FALLBACK_REPLY = (
-    "I couldn't reach the assistant just now. Please try again in a moment, "
-    "or open Help and support. You can also email support@qflow.co.za."
-)
+def fallback_reply() -> str:
+    return (
+        "I couldn't reach the assistant just now. Please try again in a moment, "
+        f"or open Help and support. You can also email {support_email()}."
+    )
 
 FEATURE_SUMMARY = """
 QFlow is a phone app for waiting in line at a clinic, bank, government office, or service counter.
@@ -372,7 +374,7 @@ async def chat(
         answered = True
     except Exception:
         logger.exception("Ask QFlow failed while calling Cloudflare Workers AI")
-        reply = FALLBACK_REPLY
+        reply = fallback_reply()
 
     await _log_exchange(str(user.get("id") or ""), safe_message, reply)
     payload = {"reply": reply}

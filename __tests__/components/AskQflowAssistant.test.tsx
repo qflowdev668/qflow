@@ -5,6 +5,13 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AskQflowAssistant } from "@/components/qflow/ask-qflow-assistant"
 
+jest.mock("@/hooks/use-t", () => ({
+  useT: () => ({
+    askQflowDisclosure:
+      "Questions are processed by Meta Llama on Cloudflare and saved to help us improve QFlow.",
+  }),
+}))
+
 const apiFetch = jest.fn()
 
 jest.mock("@/lib/api-client", () => ({
@@ -48,6 +55,9 @@ describe("AskQflowAssistant", () => {
 
     await user.click(screen.getByTestId("ask-qflow-toggle"))
     expect(screen.getByTestId("ask-qflow-panel")).toBeInTheDocument()
+    expect(screen.getByTestId("ask-qflow-disclosure")).toHaveTextContent(
+      "Questions are processed by Meta Llama on Cloudflare and saved to help us improve QFlow."
+    )
     expect(await screen.findByTestId("ask-qflow-model")).toHaveTextContent(LLAMA)
     expect(screen.getByRole("button", { name: "How long is my wait?" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "What is Fast Track?" })).toBeInTheDocument()

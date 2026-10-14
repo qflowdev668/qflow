@@ -66,7 +66,7 @@ describe("HelpSupportScreen", () => {
     expect(screen.getByTestId("help-faq")).toHaveTextContent("What is priority service?")
     expect(screen.getByTestId("help-support-email")).toHaveAttribute(
       "href",
-      "mailto:support@qflow.co.za"
+      "mailto:support@useqflow.app"
     )
     expect(screen.getByText("Check system status")).toBeInTheDocument()
     expect(screen.getByText("Accessibility settings")).toBeInTheDocument()

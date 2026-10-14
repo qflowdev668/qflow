@@ -30,15 +30,15 @@ Some environments steal the long-press (text selection, “Open in app”, acces
    `https://<your-domain>/login?unlock=staff`  
    or `?unlock=admin`. That sets `sessionStorage` and opens the gated login. **Not** the routine path — prefer the logo gestures. Treat links like temporary keys — do not post them publicly.
 3. **Direct URL after unlock:** After unlock in that browser, `/login/staff` or `/login/admin` works for the rest of the session. Without unlock, those URLs redirect back to `/login` (see E2E).
-4. **Stuck / locked out:** Email **support@qflow.co.za** (or your clinic’s QFlow admin). Customers only see “Contact your manager for login access” — no gesture details.
+4. **Stuck / locked out:** Email **SUPPORT_EMAIL** (`NEXT_PUBLIC_SUPPORT_EMAIL`, default `support@useqflow.app`, or your clinic’s QFlow admin). Customers only see “Contact your manager for login access” — no gesture details.
 
 ## Who to contact if locked out
 
 | Role | Contact |
 |------|---------|
 | New staff | Clinic manager / location admin who created their account |
-| Admins / bootstrap | Env owners (`ADMIN_OTP_PHONE` / `ADMIN_OTP_EMAIL`) or `support@qflow.co.za` |
-| Product / unlock bugs | `support@qflow.co.za` with device + browser version |
+| Admins / bootstrap | Env owners (`ADMIN_OTP_PHONE` / `ADMIN_OTP_EMAIL`) or `SUPPORT_EMAIL` (default `support@useqflow.app`) |
+| Product / unlock bugs | `SUPPORT_EMAIL` (default `support@useqflow.app`) with device + browser version |
 
 ## Related code
 

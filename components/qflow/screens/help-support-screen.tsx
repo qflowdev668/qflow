@@ -7,6 +7,7 @@ import { useChromeInsets } from "@/hooks/use-chrome-insets"
 import { TopBar } from "@/components/qflow/top-bar"
 import { MenuRow } from "@/components/qflow/user-screen-layout"
 import { AskQflowAssistant } from "@/components/qflow/ask-qflow-assistant"
+import { SUPPORT_EMAIL } from "@/lib/support-email"
 import { HelpSupportScene } from "@/components/qflow/illustrations/queue-scenes"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,8 +17,6 @@ import {
   Mail,
   RotateCcw,
 } from "lucide-react"
-
-const SUPPORT_EMAIL = "support@qflow.co.za"
 
 export function HelpSupportScreen() {
   const { navigateTo } = useApp()

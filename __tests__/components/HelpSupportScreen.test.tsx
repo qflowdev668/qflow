@@ -20,6 +20,6 @@ describe("HelpSupportScreen", () => {
     expect(
       screen.getByText(/Open Home or Map, choose a location, then tap Join/i)
     ).toBeInTheDocument()
-    expect(screen.getByText("support@qflow.co.za")).toBeInTheDocument()
+    expect(screen.getByText("support@useqflow.app")).toBeInTheDocument()
   })
 })

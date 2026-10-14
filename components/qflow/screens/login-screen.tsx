@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useApp } from "@/lib/app-context"
+import { SUPPORT_EMAIL } from "@/lib/support-email"
 import { useT } from "@/hooks/use-t"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -142,7 +143,10 @@ export function LoginScreen() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             {authError && (
-              <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm">
+              <div
+                data-testid="login-auth-error"
+                className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm"
+              >
                 {authError}
               </div>
             )}
@@ -276,7 +280,7 @@ export function LoginScreen() {
         <p className="text-xs text-muted-foreground/90">
           {t.staffOrAdminContactHint}{" "}
           <a
-            href={`mailto:support@qflow.co.za?subject=${encodeURIComponent("QFlow staff or admin login access")}`}
+            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("QFlow staff or admin login access")}`}
             className="text-muted-foreground underline-offset-2 hover:underline"
           >
             {t.staffOrAdminContactLink}
