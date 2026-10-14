@@ -147,6 +147,8 @@ export interface Location {
   isOpen: boolean
   coordinates: { lat: number; lng: number }
   description?: string
+  /** Admin-written list of what to bring. Shown as written, not translated. */
+  requiredDocuments?: string | null
 }
 
 export interface QueueEntry {
@@ -2530,6 +2532,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           capacity: location.capacity,
           is_open: location.isOpen,
           description: location.description ?? null,
+          required_documents: location.requiredDocuments?.trim()
+            ? location.requiredDocuments.trim().slice(0, 1000)
+            : null,
         })
 
         if (error) {
@@ -2563,6 +2568,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...(updates.capacity !== undefined && { capacity: updates.capacity }),
             ...(updates.isOpen !== undefined && { is_open: updates.isOpen }),
             ...(updates.description !== undefined && { description: updates.description }),
+            ...(updates.requiredDocuments !== undefined && {
+              required_documents: updates.requiredDocuments?.trim()
+                ? updates.requiredDocuments.trim().slice(0, 1000)
+                : null,
+            }),
             ...(updates.coordinates !== undefined && {
               lat: updates.coordinates.lat,
               lng: updates.coordinates.lng,

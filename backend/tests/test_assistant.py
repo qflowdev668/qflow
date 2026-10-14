@@ -240,3 +240,198 @@ def test_workers_timeout_returns_fallback(monkeypatch):
     assert support_email() in response.json()["reply"]
     assert "model" not in response.json()
     assert "Traceback" not in response.json()["reply"]
+
+
+def _install_chip_db(monkeypatch, documents="Green ID book"):
+    async def fake_get_one(path, params):
+        if path == "profiles":
+            assert params.get("select") == "name"
+            return {
+                "name": "Thabo Mokoena",
+                "email": "secret.user@example.com",
+                "phone": "+27821234567",
+            }
+        if path == "locations":
+            assert params.get("select") == "name,required_documents"
+            return {"name": "Hillbrow Clinic", "required_documents": documents}
+        raise AssertionError(path)
+
+    async def fake_get(path, params):
+        assert path == "queue_entries"
+        if params.get("select") == "id":
+            return [
+                {"id": "other-1", "name": "Lerato Nkosi"},
+                {"id": "other-2", "name": "Sipho Dlamini"},
+            ]
+        return [
+            {
+                "position": 4,
+                "status": "waiting",
+                "priority": "fast-track",
+                "location_id": "loc-1",
+                "locations": {"name": "Hillbrow Clinic"},
+            }
+        ]
+
+    async def fake_insert(path, body, prefer="return=representation"):
+        assert path == "assistant_messages"
+        blob = f"{body.get('message', '')}\n{body.get('reply', '')}"
+        assert "secret.user@example.com" not in blob
+        assert "+27821234567" not in blob
+        assert "Lerato" not in blob
+        return {}
+
+    monkeypatch.setattr(assistant_mod, "rest_get_one", fake_get_one)
+    monkeypatch.setattr(assistant_mod, "rest_get", fake_get)
+    monkeypatch.setattr(assistant_mod, "rest_insert", fake_insert)
+
+
+def _chip(json):
+    reset_rate_limits()
+    assistant_mod.reset_chip_cache()
+    _FakeWorkers.captured = []
+    _override_user()
+    try:
+        return client.post("/api/assistant/chip", json=json)
+    finally:
+        _clear_override()
+
+
+def test_chip_answers_from_documents_and_live_queue(monkeypatch):
+    _use_workers(monkeypatch)
+    monkeypatch.setattr(assistant_mod.httpx, "AsyncClient", _FakeWorkers)
+    _install_chip_db(monkeypatch)
+    response = _chip({"chip": "documents", "location_id": "loc-1", "language": "en"})
+
+    assert response.status_code == 200
+    assert response.json()["reply"].startswith("You are number 4")
+    assert _FakeWorkers.captured
+    blob = _prompt_blob(_FakeWorkers.captured[0])
+    assert "Green ID book" in blob
+    assert "Position: 4" in blob
+    assert "People ahead: 2" in blob
+    assert "Estimated wait minutes:" in blob
+    assert "Ticket status: waiting" in blob
+    assert "Thabo" in blob
+    assert "Do not give medical advice" in blob
+    assert "Call 10177 or 112 now." in blob
+    assert "Get directions" not in blob
+    assert "Priority type" not in blob
+    assert "secret.user@example.com" not in blob
+    assert "+27821234567" not in blob
+    assert "Lerato" not in blob
+    assert "Sipho" not in blob
+
+
+def test_chip_empty_documents_does_not_guess(monkeypatch):
+    _use_workers(monkeypatch)
+    monkeypatch.setattr(assistant_mod.httpx, "AsyncClient", _FakeWorkers)
+    _install_chip_db(monkeypatch, documents="")
+    response = _chip({"chip": "documents", "location_id": "loc-1"})
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == assistant_mod.EMPTY_DOCUMENTS_REPLY
+    assert _FakeWorkers.captured == []
+
+
+def test_chip_emergency_phrase_skips_llama(monkeypatch):
+    _use_workers(monkeypatch)
+    monkeypatch.setattr(assistant_mod.httpx, "AsyncClient", _FakeWorkers)
+
+    async def no_insert(*args, **kwargs):
+        return {}
+
+    monkeypatch.setattr(assistant_mod, "rest_insert", no_insert)
+    response = _chip({"message": "I have chest pain and need an ambulance"})
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Call 10177 or 112 now."
+    assert _FakeWorkers.captured == []
+
+
+def test_chip_refuses_off_topic(monkeypatch):
+    _use_workers(monkeypatch)
+    monkeypatch.setattr(assistant_mod.httpx, "AsyncClient", _FakeWorkers)
+
+    async def no_insert(*args, **kwargs):
+        return {}
+
+    monkeypatch.setattr(assistant_mod, "rest_insert", no_insert)
+    response = _chip({"message": "What is the weather in Paris?"})
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == assistant_mod.OFF_TOPIC_REPLY
+    assert _FakeWorkers.captured == []
+
+
+def test_chip_rate_limit(monkeypatch):
+    _use_workers(monkeypatch)
+    monkeypatch.setattr(assistant_mod.httpx, "AsyncClient", _FakeWorkers)
+    _install_chip_db(monkeypatch, documents="")
+    reset_rate_limits()
+    assistant_mod.reset_chip_cache()
+    _override_user()
+    try:
+        last = None
+        for _ in range(ASSISTANT_MAX + 1):
+            last = client.post(
+                "/api/assistant/chip",
+                json={"chip": "documents", "location_id": "loc-1"},
+            )
+    finally:
+        _clear_override()
+        reset_rate_limits()
+
+    assert last is not None
+    assert last.status_code == 429
+    assert last.json()["error"] == (
+        "You've asked a lot of questions this hour. Please wait a bit and try again."
+    )
+    assert "Traceback" not in last.text
+    ai_calls = [item for item in _FakeWorkers.captured if "api.cloudflare.com" in item["url"]]
+    assert ai_calls == []
+
+
+def test_chip_non_english_does_not_call_llama(monkeypatch):
+    _use_workers(monkeypatch)
+    monkeypatch.setattr(assistant_mod.httpx, "AsyncClient", _FakeWorkers)
+    response = _chip({"chip": "wait", "language": "zu"})
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == "AI answers are English-only for now"
+    assert _FakeWorkers.captured == []
+
+
+def test_chip_workers_failure_is_friendly(monkeypatch):
+    _install_chip_db(monkeypatch)
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("Traceback (most recent call last): TypeError: boom")
+
+    monkeypatch.setattr(assistant_mod, "call_llama", boom)
+    response = _chip({"chip": "wait", "location_id": "loc-1"})
+
+    assert response.status_code == 200
+    assert "couldn't reach the assistant" in response.json()["reply"].lower()
+    assert "Traceback" not in response.text
+    assert "TypeError" not in response.text
+
+
+def test_chip_caches_identical_answers(monkeypatch):
+    _use_workers(monkeypatch)
+    monkeypatch.setattr(assistant_mod.httpx, "AsyncClient", _FakeWorkers)
+    _install_chip_db(monkeypatch)
+    reset_rate_limits()
+    assistant_mod.reset_chip_cache()
+    _override_user()
+    try:
+        first = client.post("/api/assistant/chip", json={"chip": "wait", "location_id": "loc-1"})
+        second = client.post("/api/assistant/chip", json={"chip": "wait", "location_id": "loc-1"})
+    finally:
+        _clear_override()
+        reset_rate_limits()
+        assistant_mod.reset_chip_cache()
+
+    assert first.status_code == 200
+    assert second.json()["reply"] == first.json()["reply"]
+    assert len(_FakeWorkers.captured) == 1

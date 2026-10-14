@@ -115,7 +115,12 @@ export function JoinQueueDrawer({
           />
         </div>
         <div className="max-h-[45vh] shrink-0 overflow-y-auto px-5 pb-6 pt-5">
-          <AskQflowAssistant compact placeName={loc?.name} className="mb-0" />
+          <AskQflowAssistant
+            compact
+            placeName={loc?.name}
+            locationId={loc?.id}
+            className="mb-0"
+          />
         </div>
       </DrawerContent>
     </Drawer>

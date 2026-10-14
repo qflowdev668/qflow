@@ -66,6 +66,7 @@ export interface Database {
           capacity: number
           is_open: boolean
           description: string | null
+          required_documents: string | null
           queue_count: number
           created_at: string
         }
@@ -79,6 +80,7 @@ export interface Database {
           capacity?: number
           is_open?: boolean
           description?: string | null
+          required_documents?: string | null
           queue_count?: number
           created_at?: string
         }
@@ -92,6 +94,7 @@ export interface Database {
           capacity?: number
           is_open?: boolean
           description?: string | null
+          required_documents?: string | null
           queue_count?: number
         }
         Relationships: []

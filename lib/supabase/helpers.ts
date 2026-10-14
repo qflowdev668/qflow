@@ -37,6 +37,7 @@ export function mapDbLocation(row: DbLocation): Location {
     isOpen: row.is_open,
     coordinates: { lat: row.lat, lng: row.lng },
     description: row.description ?? undefined,
+    requiredDocuments: row.required_documents?.trim() ? row.required_documents : null,
   }
 }
 
