@@ -1,23 +1,21 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { exchangeAuthCodeOnce } from "@/lib/auth-code"
 import {
   AUTH_SESSION_WAIT_MS,
-  AUTH_SIGN_IN_TICK_MS,
-  AUTH_SPLASH_FADE_MS,
   AUTH_SPLASH_MAX_MS,
   destinationAfterSignIn,
-  firstNameFromSessionUser,
   hasOAuthError,
   hasStoredAuthSession,
   isAuthCallbackPath,
+  isCustomerHomePath,
   planAuthCallback,
   splashHoldMs,
 } from "@/lib/auth-callback-flow"
 import { authSplashIsActive, clearAuthSplash, markAuthSplash } from "@/lib/auth-splash"
-import { SignInLoader } from "@/components/qflow/sign-in-loader"
+import { HomeLoadingView, NeutralSignInSkeleton } from "@/components/qflow/home-content-skeleton"
 import { useT } from "@/hooks/use-t"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -35,8 +33,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Stays mounted in the app shell so one SignInLoader covers
- * /auth/callback until the destination route replaces it.
+ * Covers /auth/callback until replace. Home uses the Home loading tree.
+ * Any other destination uses a neutral skeleton so Home chrome does not flash.
  */
 export function AuthSplashOverlay() {
   const pathname = usePathname() || ""
@@ -44,10 +42,8 @@ export function AuthSplashOverlay() {
   const t = useT()
   const onCallback = isAuthCallbackPath(pathname)
   const [visible, setVisible] = useState(() => onCallback || authSplashIsActive())
-  const [fading, setFading] = useState(() => !onCallback && authSplashIsActive())
+  const [homeCover, setHomeCover] = useState(true)
   const [slow, setSlow] = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
-  const [firstName, setFirstName] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const startedAt = useRef(0)
   const deadlineAt = useRef(0)
@@ -59,6 +55,11 @@ export function AuthSplashOverlay() {
     routerRef.current = router
   }, [router])
 
+  useLayoutEffect(() => {
+    if (!onCallback) return
+    setHomeCover(isCustomerHomePath(destinationAfterSignIn("user", readLastRoute())))
+  }, [attempt, onCallback])
+
   useEffect(() => {
     expiredMessage.current = t.signInLinkExpired
   }, [t.signInLinkExpired])
@@ -67,18 +68,12 @@ export function AuthSplashOverlay() {
     if (onCallback) {
       markAuthSplash()
       setVisible(true)
-      setFading(false)
       return
     }
-    setFading(true)
-    const timer = window.setTimeout(() => {
-      setVisible(false)
-      setFading(false)
-      clearAuthSplash()
-      startedAt.current = 0
-      deadlineAt.current = 0
-    }, AUTH_SPLASH_FADE_MS)
-    return () => window.clearTimeout(timer)
+    setVisible(false)
+    clearAuthSplash()
+    startedAt.current = 0
+    deadlineAt.current = 0
   }, [onCallback])
 
   useEffect(() => {
@@ -101,17 +96,11 @@ export function AuthSplashOverlay() {
       routerRef.current.replace(href)
     }, 900)
 
-    const replaceAfterHold = async (
-      href: string,
-      celebrate?: { name: string | null }
-    ) => {
-      if (celebrate) {
-        setFirstName(celebrate.name)
-        setConfirmed(true)
-      }
-      const hold = splashHoldMs(startedAt.current || Date.now(), Date.now())
-      const wait = celebrate ? Math.max(hold, AUTH_SIGN_IN_TICK_MS) : hold
-      if (wait) await sleep(wait)
+    const replaceAfterHold = async (href: string) => {
+      const home = isCustomerHomePath(href)
+      if (active) setHomeCover((current) => (current === home ? current : home))
+      const hold = home ? 0 : splashHoldMs(startedAt.current || Date.now(), Date.now())
+      if (hold) await sleep(hold)
       if (!active || timedOut.current) return
       routerRef.current.replace(href)
     }
@@ -137,7 +126,7 @@ export function AuthSplashOverlay() {
 
       if (raced.kind === "timeout") {
         if (hasStoredAuthSession()) {
-          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()), { name: null })
+          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
           return
         }
         if (hasOAuthError(params)) {
@@ -182,14 +171,12 @@ export function AuthSplashOverlay() {
       if (!active || timedOut.current) return
       if (!user?.id) {
         if (hasStoredAuthSession()) {
-          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()), { name: null })
+          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
           return
         }
         await replaceAfterHold("/login")
         return
       }
-
-      const knownName = firstNameFromSessionUser(user)
 
       const role = await Promise.race([
         fetchProfileRole(supabase, user.id),
@@ -209,7 +196,7 @@ export function AuthSplashOverlay() {
       }
 
       const dest = destinationAfterSignIn((role ?? "user") as AppRole, readLastRoute())
-      await replaceAfterHold(dest, { name: knownName })
+      await replaceAfterHold(dest)
     }
 
     void run()
@@ -223,21 +210,42 @@ export function AuthSplashOverlay() {
   if (!visible) return null
 
   return (
-    <SignInLoader
-      phase={slow ? "slow" : confirmed ? "confirmed" : "waiting"}
-      fading={fading}
-      firstName={firstName}
-      onRetry={() => {
-        exchangeGuard.current = null
-        setConfirmed(false)
-        setFirstName(null)
-        setSlow(false)
-        setAttempt((value) => value + 1)
-      }}
-      onBack={() => {
-        clearAuthSplash()
-        routerRef.current.replace("/login")
-      }}
-    />
+    <div
+      data-testid="post-sign-in-skeleton"
+      className="fixed inset-0 z-[80] overflow-y-auto bg-white"
+    >
+      <div className="mx-auto min-h-dvh w-full max-w-qflow bg-white">
+        <div role="status" aria-label={t.signingYouIn}>
+          <span className="sr-only">{t.signingYouIn}</span>
+        </div>
+        <div aria-hidden="true">{homeCover ? <HomeLoadingView /> : <NeutralSignInSkeleton />}</div>
+        {slow ? (
+        <div className="px-6 pb-10 text-center">
+          <p className="mb-4 text-sm font-medium text-foreground">{t.signInTakingLonger}</p>
+          <button
+            type="button"
+            className="mb-3 h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground"
+            onClick={() => {
+              exchangeGuard.current = null
+              setSlow(false)
+              setAttempt((value) => value + 1)
+            }}
+          >
+            {t.retry}
+          </button>
+          <button
+            type="button"
+            className="text-sm font-medium text-primary"
+            onClick={() => {
+              clearAuthSplash()
+              routerRef.current.replace("/login")
+            }}
+          >
+            {t.backToSignIn}
+          </button>
+        </div>
+      ) : null}
+      </div>
+    </div>
   )
 }

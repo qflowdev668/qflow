@@ -206,11 +206,6 @@ export type TranslationKeys = {
   signInLinkExpired: string
   signInTakingLonger: string
   backToSignIn: string
-  signInCheckingDetails: string
-  signInFindingPlace: string
-  signInAlmostThere: string
-  signInYoureNext: string
-  signInWelcomeName: string
 
   splashTagline: string
   cookieTitle: string
@@ -980,11 +975,6 @@ const en = {
   signInLinkExpired: "That sign-in link expired. Please try again.",
   signInTakingLonger: "Taking longer than usual",
   backToSignIn: "Back to sign in",
-  signInCheckingDetails: "Checking your details",
-  signInFindingPlace: "Finding your place",
-  signInAlmostThere: "Almost there",
-  signInYoureNext: "You're next",
-  signInWelcomeName: "Welcome, {name}",
 
   splashTagline: "Where Waiting Ends",
   cookieTitle: "QFlow uses essential cookies",
@@ -1185,11 +1175,6 @@ const af = {
   signInLinkExpired: "Daardie aanmeldskakel het verval. Probeer asseblief weer.",
   signInTakingLonger: "Dit neem langer as gewoonlik",
   backToSignIn: "Terug na aanmeld",
-  signInCheckingDetails: "Ons gaan jou besonderhede na",
-  signInFindingPlace: "Ons soek jou plek",
-  signInAlmostThere: "Amper daar",
-  signInYoureNext: "Jy is volgende",
-  signInWelcomeName: "Welkom, {name}",
 
   splashTagline: "Slaan die ry oor. Nie die diens nie.",
   cookieTitle: "QFlow gebruik noodsaaklike koekies",
@@ -1390,11 +1375,6 @@ const zu = {
   signInLinkExpired: "Isixhumanisi sokungena siphelelwe yisikhathi. Zama futhi.",
   signInTakingLonger: "Kuthatha isikhathi eside kunokujwayelekile",
   backToSignIn: "Buyela ekungeneni",
-  signInCheckingDetails: "Sihlola imininingwane yakho",
-  signInFindingPlace: "Sithola indawo yakho",
-  signInAlmostThere: "Cishe sesifikile",
-  signInYoureNext: "Ungulandelayo",
-  signInWelcomeName: "Siyakwamukela, {name}",
 
   splashTagline: "Yeqa umgca. Ungaweqi isevisi.",
   cookieTitle: "I-QFlow isebenzisa amakhukhi abalulekile",
@@ -1595,11 +1575,6 @@ const st = {
   signInLinkExpired: "Sehokelo sa ho kena se felletse ke nako. Ka kopo leka hape.",
   signInTakingLonger: "Ho nka nako e telele ho feta ka mehla",
   backToSignIn: "Kgutlela ho keneng",
-  signInCheckingDetails: "Re hlahloba lintlha tsa hau",
-  signInFindingPlace: "Re batla sebaka sa hau",
-  signInAlmostThere: "Haufi le ho fihla",
-  signInYoureNext: "O latela",
-  signInWelcomeName: "Rea u amohela, {name}",
 
   splashTagline: "Tlola moleng. Se tlolo tšebeletso.",
   cookieTitle: "QFlow e sebelisa li-cookie tsa bohlokoa",
@@ -1800,11 +1775,6 @@ const xh = {
   signInLinkExpired: "Ikhonkco yokungena liphelelwe lixesha. Nceda uzame kwakhona.",
   signInTakingLonger: "Kuthatha ixesha elide kunesiqhelo",
   backToSignIn: "Buyela ekungeneni",
-  signInCheckingDetails: "Sijonga iinkcukacha zakho",
-  signInFindingPlace: "Sifumana indawo yakho",
-  signInAlmostThere: "Sele sisondele",
-  signInYoureNext: "Ungulandelayo",
-  signInWelcomeName: "Wamkelekile, {name}",
 
   splashTagline: "Tsiba umgca. Ungawutshibi inkonzo.",
   cookieTitle: "I-QFlow isebenzisa ii-cookies ezibalulekileyo",
@@ -2005,11 +1975,6 @@ const tn = {
   signInLinkExpired: "Kgolagano ya go tsena e fedile. Tsweetswee leka gape.",
   signInTakingLonger: "Go tsaya nako e e telele go feta ka gale",
   backToSignIn: "Boela go go tsena",
-  signInCheckingDetails: "Re lekola dintlha tsa gago",
-  signInFindingPlace: "Re batla lefelo la gago",
-  signInAlmostThere: "Go setse go le gonnye",
-  signInYoureNext: "O latela",
-  signInWelcomeName: "O amogetswe, {name}",
 
   splashTagline: "Tlola mola. O se tlhole tirelo.",
   cookieTitle: "QFlow e dirisa di-cookie tse di botlhokwa",

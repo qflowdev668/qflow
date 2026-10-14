@@ -13,6 +13,7 @@ import { useT } from "@/hooks/use-t"
 import { BottomNav } from "@/components/qflow/bottom-nav"
 import { LocationCard } from "@/components/qflow/location-card"
 import { JoinQueueDrawer } from "@/components/qflow/join-queue-drawer"
+import { HomeGreetingSkeleton, HomeLocationSkeletons, HomeSearchSkeleton } from "@/components/qflow/home-content-skeleton"
 import { QuickActionTile } from "@/components/qflow/user-screen-layout"
 import {
   FindLocationScene,
@@ -25,7 +26,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { useChromeInsets } from "@/hooks/use-chrome-insets"
-import { Skeleton } from "@/components/ui/skeleton"
 
 const categoryIds = ["all", "clinic", "bank", "government", "other"] as const
 
@@ -159,11 +159,7 @@ export function HomeScreen() {
                 </p>
               </>
             ) : (
-              <div data-testid="home-greeting-skeleton" className="space-y-2" aria-busy="true">
-                <div className="h-4 w-24 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
-                <div className="h-8 w-40 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
-                <div className="h-5 w-52 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
-              </div>
+            <HomeGreetingSkeleton />
             )}
           </div>
           <button
@@ -223,11 +219,7 @@ export function HomeScreen() {
             />
           </div>
         ) : (
-          <div
-            data-testid="home-search-skeleton"
-            className="mb-4 h-14 animate-pulse rounded-2xl bg-muted motion-reduce:animate-none"
-            aria-busy="true"
-          />
+          <HomeSearchSkeleton />
         )}
 
         <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
@@ -321,15 +313,7 @@ export function HomeScreen() {
       <section className="px-4 pb-4">
         <h2 className="text-lg font-bold text-foreground mb-3">{t.allLocations}</h2>
         {locationsReady === false ? (
-          <div className="space-y-3" data-testid="home-location-skeletons" aria-busy="true">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="rounded-2xl border border-border/80 bg-white p-4">
-                <Skeleton className="mb-3 h-5 w-2/3" />
-                <Skeleton className="mb-2 h-4 w-1/2" />
-                <Skeleton className="h-4 w-1/3" />
-              </div>
-            ))}
-          </div>
+          <HomeLocationSkeletons />
         ) : (
         <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-3", isServerDown && "opacity-60")}>
           {sortedLocations.map((location) => (

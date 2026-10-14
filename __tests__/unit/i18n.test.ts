@@ -41,21 +41,11 @@ describe("Internationalisation", () => {
       expect(t.signInLinkExpired.length).toBeGreaterThan(0)
       expect(t.signInTakingLonger.length).toBeGreaterThan(0)
       expect(t.backToSignIn.length).toBeGreaterThan(0)
-      expect(t.signInCheckingDetails.length).toBeGreaterThan(0)
-      expect(t.signInFindingPlace.length).toBeGreaterThan(0)
-      expect(t.signInAlmostThere.length).toBeGreaterThan(0)
-      expect(t.signInYoureNext.length).toBeGreaterThan(0)
-      expect(t.signInWelcomeName).toContain("{name}")
     }
   })
 
-  it("uses the sign-in loader lines in English", () => {
-    const t = getTranslations("en")
-    expect(t.signInCheckingDetails).toBe("Checking your details")
-    expect(t.signInFindingPlace).toBe("Finding your place")
-    expect(t.signInAlmostThere).toBe("Almost there")
-    expect(t.signInYoureNext).toBe("You're next")
-    expect(t.signInWelcomeName).toBe("Welcome, {name}")
+  it("uses the sign-in status line in English", () => {
+    expect(getTranslations("en").signingYouIn).toBe("Signing you in")
   })
 
   it("covers rating gate copy in English", () => {

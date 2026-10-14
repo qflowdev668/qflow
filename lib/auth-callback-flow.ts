@@ -2,9 +2,6 @@ import { homePathForRole, pathAllowedForRole, type AppRole } from "@/lib/routes"
 
 export const AUTH_SPLASH_MIN_MS = 400
 export const AUTH_SPLASH_MAX_MS = 8000
-export const AUTH_SPLASH_FADE_MS = 200
-/** How long the "You're next" ticket stays before the loader fades. */
-export const AUTH_SIGN_IN_TICK_MS = 350
 /** How long an error callback waits for getSession before it leaves the splash. */
 export const AUTH_SESSION_WAIT_MS = 700
 
@@ -57,6 +54,12 @@ export function planAuthCallback(params: URLSearchParams, hasSession: boolean): 
 
 export function splashHoldMs(startedAt: number, now: number, minMs = AUTH_SPLASH_MIN_MS): number {
   return Math.max(0, minMs - (now - startedAt))
+}
+
+/** Customer Home. Staff and admin homes are separate routes. */
+export function isCustomerHomePath(href: string): boolean {
+  const path = (href.split("?")[0] || "/").replace(/\/$/, "") || "/"
+  return path === "/home"
 }
 
 /** First name already on the session. Does not fetch a profile. */

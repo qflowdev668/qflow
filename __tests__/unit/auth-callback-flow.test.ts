@@ -1,6 +1,7 @@
 import {
   destinationAfterSignIn,
   firstNameFromSessionUser,
+  isCustomerHomePath,
   hasStoredAuthSession,
   planAuthCallback,
   splashHoldMs,
@@ -33,6 +34,16 @@ describe("planAuthCallback", () => {
   it("holds the splash for the remainder of the minimum time", () => {
     expect(splashHoldMs(1000, 1100)).toBe(300)
     expect(splashHoldMs(1000, 1500)).toBe(0)
+  })
+
+  it("treats only customer Home as the Home skeleton destination", () => {
+    expect(isCustomerHomePath("/home")).toBe(true)
+    expect(isCustomerHomePath("/home/")).toBe(true)
+    expect(isCustomerHomePath("/home?toast=1")).toBe(true)
+    expect(isCustomerHomePath("/map")).toBe(false)
+    expect(isCustomerHomePath("/location/abc")).toBe(false)
+    expect(isCustomerHomePath("/staff")).toBe(false)
+    expect(isCustomerHomePath("/admin")).toBe(false)
   })
 
   it("does not treat the callback route as the startup splash", () => {

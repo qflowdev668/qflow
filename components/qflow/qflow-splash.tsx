@@ -13,7 +13,7 @@ type QFlowSplashProps = {
   children?: ReactNode
 }
 
-/** Startup splash. Sign-in uses SignInLoader instead. */
+/** Startup splash. Sign-in uses the destination skeleton cover instead. */
 export function QFlowSplash({
   subtitle,
   showDots = true,
