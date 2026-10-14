@@ -12,6 +12,8 @@ const nav = {
 
 const auth = {
   session: null as { user: { id: string } } | null,
+  hangSession: false,
+  hangProfile: false,
   exchange: jest.fn(async () => ({ error: null as { message: string } | null })),
 }
 
@@ -41,20 +43,24 @@ jest.mock("@/hooks/use-t", () => ({
 jest.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
     auth: {
-      getSession: async () => ({ data: { session: auth.session } }),
-      exchangeCodeForSession: (code: string) => auth.exchange(code),
+      getSession: () =>
+        auth.hangSession
+          ? new Promise(() => undefined)
+          : Promise.resolve({ data: { session: auth.session } }),
+      exchangeCodeForSession: () => auth.exchange(),
     },
   }),
 }))
 
 jest.mock("@/lib/privileged-session-guard", () => ({
-  fetchProfileRole: async () => "user",
+  fetchProfileRole: () => (auth.hangProfile ? new Promise(() => undefined) : Promise.resolve("user")),
   signOutIfPrivilegedGoogle: async () => false,
   privilegedGoogleBlockMessage: () => "blocked",
   privilegedGoogleLoginPath: () => "/login/staff",
 }))
 
 import { AuthSplashOverlay } from "@/components/qflow/auth-splash-overlay"
+import AuthCallbackPage from "@/app/auth/callback/page"
 
 function setSearch(search: string) {
   window.history.pushState({}, "", `/auth/callback/${search}`)
@@ -73,6 +79,13 @@ async function flush() {
   })
 }
 
+describe("Auth callback page", () => {
+  it("does not mount a second splash", () => {
+    const { container } = render(<AuthCallbackPage />)
+    expect(container.querySelector("[data-testid=qflow-splash]")).toBeNull()
+  })
+})
+
 describe("AuthSplashOverlay", () => {
   beforeEach(() => {
     jest.useFakeTimers()
@@ -81,6 +94,8 @@ describe("AuthSplashOverlay", () => {
     nav.pathname = "/auth/callback/"
     nav.replace.mockClear()
     auth.session = null
+    auth.hangSession = false
+    auth.hangProfile = false
     auth.exchange.mockReset()
     auth.exchange.mockImplementation(async () => {
       auth.session = { user: { id: "user-1" } }
@@ -159,5 +174,39 @@ describe("AuthSplashOverlay", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to sign in" }))
     expect(nav.replace).toHaveBeenCalledWith("/login")
+  })
+
+  it("leaves for login when an error link's session check never returns", async () => {
+    auth.hangSession = true
+    setSearch("?error=invalid_request&error_code=bad_oauth_state&error_description=OAuth+state+not+found+or+expired")
+
+    render(<AuthSplashOverlay />)
+    await act(async () => {
+      jest.advanceTimersByTime(1000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const target = String(nav.replace.mock.calls.at(-1)?.[0] ?? "")
+    expect(target.startsWith("/login?auth_error=")).toBe(true)
+    expect(decodeURIComponent(target)).toContain("That sign-in link expired. Please try again.")
+    expect(target).not.toMatch(/OAuth|bad_oauth_state|error_description/)
+  })
+
+  it("enters the app when a session exists even if the profile request hangs", async () => {
+    auth.session = { user: { id: "user-1" } }
+    auth.hangProfile = true
+    setSearch("?error=invalid_request&error_code=bad_oauth_state&error_description=OAuth+state+not+found+or+expired")
+
+    render(<AuthSplashOverlay />)
+    await flush()
+    await act(async () => {
+      jest.advanceTimersByTime(500)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(nav.replace).toHaveBeenCalledWith("/home")
+    expect(String(nav.replace.mock.calls[0][0])).not.toMatch(/error_description|OAuth/)
   })
 })

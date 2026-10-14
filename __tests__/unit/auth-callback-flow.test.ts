@@ -1,5 +1,6 @@
-import { destinationAfterSignIn, planAuthCallback, splashHoldMs } from "@/lib/auth-callback-flow"
+import { destinationAfterSignIn, hasStoredAuthSession, planAuthCallback, splashHoldMs } from "@/lib/auth-callback-flow"
 import { authSplashIsActive, clearAuthSplash, markAuthSplash } from "@/lib/auth-splash"
+import { screenFromPath } from "@/lib/routes"
 
 describe("planAuthCallback", () => {
   it("exchanges a code when the callback has no error", () => {
@@ -26,6 +27,11 @@ describe("planAuthCallback", () => {
   it("holds the splash for the remainder of the minimum time", () => {
     expect(splashHoldMs(1000, 1100)).toBe(300)
     expect(splashHoldMs(1000, 1500)).toBe(0)
+  })
+
+  it("does not treat the callback route as the startup splash", () => {
+    expect(screenFromPath("/auth/callback/")).toBe("auth-callback")
+    expect(screenFromPath("/auth/callback")).toBe("auth-callback")
   })
 
   it("sends a signed-in user to home instead of the startup splash", () => {
@@ -59,5 +65,10 @@ describe("auth splash flag", () => {
     expect(authSplashIsActive()).toBe(true)
     clearAuthSplash()
     expect(authSplashIsActive()).toBe(false)
+  })
+
+  it("notices a stored auth cookie without calling getSession", () => {
+    document.cookie = "qflow-auth=session; path=/"
+    expect(hasStoredAuthSession()).toBe(true)
   })
 })

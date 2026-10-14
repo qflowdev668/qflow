@@ -918,7 +918,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [supabase])
+  }, [supabase, pathname])
 
   // If Supabase falls back to Site URL with ?code= on a non-callback path, forward it.
   // Email/password sign-in never puts a code in the URL and does not use this.

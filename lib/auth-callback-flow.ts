@@ -3,6 +3,28 @@ import { homePathForRole, pathAllowedForRole, type AppRole } from "@/lib/routes"
 export const AUTH_SPLASH_MIN_MS = 400
 export const AUTH_SPLASH_MAX_MS = 8000
 export const AUTH_SPLASH_FADE_MS = 180
+/** How long an error callback waits for getSession before it leaves the splash. */
+export const AUTH_SESSION_WAIT_MS = 700
+
+const AUTH_STORAGE_KEY = "qflow-auth"
+
+/** True when a session cookie or storage entry is already on this device. */
+export function hasStoredAuthSession(): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    if (window.localStorage.getItem(AUTH_STORAGE_KEY)) return true
+  } catch {
+    // Storage can throw in private mode.
+  }
+  try {
+    return document.cookie.split(";").some((part) => {
+      const name = part.trim().split("=")[0]
+      return name === AUTH_STORAGE_KEY || name.startsWith(`${AUTH_STORAGE_KEY}.`)
+    })
+  } catch {
+    return false
+  }
+}
 
 export function isAuthCallbackPath(pathname: string): boolean {
   const path = pathname.replace(/\/$/, "") || "/"

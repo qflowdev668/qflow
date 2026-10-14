@@ -4,9 +4,12 @@ import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { exchangeAuthCodeOnce } from "@/lib/auth-code"
 import {
+  AUTH_SESSION_WAIT_MS,
   AUTH_SPLASH_FADE_MS,
   AUTH_SPLASH_MAX_MS,
   destinationAfterSignIn,
+  hasOAuthError,
+  hasStoredAuthSession,
   isAuthCallbackPath,
   planAuthCallback,
   splashHoldMs,
@@ -42,50 +45,57 @@ export function AuthSplashOverlay() {
   const [fading, setFading] = useState(() => !onCallback && authSplashIsActive())
   const [slow, setSlow] = useState(false)
   const [attempt, setAttempt] = useState(0)
-  const [trackedCallback, setTrackedCallback] = useState(onCallback)
   const startedAt = useRef(0)
+  const deadlineAt = useRef(0)
   const exchangeGuard = useRef<string | null>(null)
   const routerRef = useRef(router)
-
-  if (onCallback !== trackedCallback) {
-    setTrackedCallback(onCallback)
-    if (onCallback) {
-      setVisible(true)
-      setFading(false)
-      setSlow(false)
-    } else {
-      setFading(true)
-    }
-  }
+  const expiredMessage = useRef(t.signInLinkExpired)
 
   useEffect(() => {
     routerRef.current = router
   }, [router])
 
   useEffect(() => {
+    expiredMessage.current = t.signInLinkExpired
+  }, [t.signInLinkExpired])
+
+  useEffect(() => {
     if (onCallback) {
       markAuthSplash()
+      setVisible(true)
+      setFading(false)
       return
     }
-    if (!fading) return
+    setFading(true)
     const timer = window.setTimeout(() => {
       setVisible(false)
       setFading(false)
       clearAuthSplash()
       startedAt.current = 0
+      deadlineAt.current = 0
     }, AUTH_SPLASH_FADE_MS)
     return () => window.clearTimeout(timer)
-  }, [fading, onCallback])
+  }, [onCallback])
 
   useEffect(() => {
     if (!onCallback) return
     let active = true
     const timedOut = { current: false }
     if (startedAt.current === 0) startedAt.current = Date.now()
+    if (deadlineAt.current === 0) deadlineAt.current = startedAt.current + AUTH_SPLASH_MAX_MS
     const slowTimer = window.setTimeout(() => {
       timedOut.current = true
       if (active) setSlow(true)
-    }, AUTH_SPLASH_MAX_MS)
+    }, Math.max(0, deadlineAt.current - Date.now()))
+
+    const errorNow = hasOAuthError(new URLSearchParams(window.location.search))
+    const watchdog = window.setTimeout(() => {
+      if (!active || !errorNow) return
+      const href = hasStoredAuthSession()
+        ? destinationAfterSignIn("user", readLastRoute())
+        : `/login?auth_error=${encodeURIComponent(expiredMessage.current)}`
+      routerRef.current.replace(href)
+    }, 900)
 
     const replaceAfterHold = async (href: string) => {
       const hold = splashHoldMs(startedAt.current || Date.now(), Date.now())
@@ -95,19 +105,40 @@ export function AuthSplashOverlay() {
     }
 
     const run = async () => {
+      const params = new URLSearchParams(window.location.search)
+      const expiredLogin = `/login?auth_error=${encodeURIComponent(expiredMessage.current)}`
       const supabase = createClient()
       if (!supabase) {
         await replaceAfterHold("/login?auth_error=Supabase+is+not+configured")
         return
       }
 
-      const params = new URLSearchParams(window.location.search)
-      const before = await supabase.auth.getSession()
+      const pendingSession = supabase.auth.getSession().then((result) => result.data.session ?? null)
+      const raced = await Promise.race([
+        pendingSession.then((session) => ({ kind: "settled" as const, session })),
+        sleep(hasOAuthError(params) ? AUTH_SESSION_WAIT_MS : AUTH_SPLASH_MAX_MS).then(() => ({
+          kind: "timeout" as const,
+          session: null,
+        })),
+      ])
       if (!active || timedOut.current) return
-      const plan = planAuthCallback(params, Boolean(before.data.session))
+
+      if (raced.kind === "timeout") {
+        if (hasStoredAuthSession()) {
+          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
+          return
+        }
+        if (hasOAuthError(params)) {
+          await replaceAfterHold(expiredLogin)
+          return
+        }
+        return
+      }
+
+      const plan = planAuthCallback(params, Boolean(raced.session))
 
       if (plan.kind === "expired") {
-        await replaceAfterHold(`/login?auth_error=${encodeURIComponent(t.signInLinkExpired)}`)
+        await replaceAfterHold(expiredLogin)
         return
       }
 
@@ -118,26 +149,45 @@ export function AuthSplashOverlay() {
         const { error } = await exchangeAuthCodeOnce(supabase, plan.code)
         if (!active || timedOut.current) return
         if (error) {
-          const again = await supabase.auth.getSession()
-          if (!again.data.session) {
-            await replaceAfterHold(`/login?auth_error=${encodeURIComponent(t.signInLinkExpired)}`)
+          const again = await Promise.race([
+            supabase.auth.getSession().then((result) => result.data.session ?? null),
+            sleep(AUTH_SESSION_WAIT_MS).then(() => null),
+          ])
+          if (!again && !hasStoredAuthSession()) {
+            await replaceAfterHold(expiredLogin)
             return
           }
         }
       }
 
-      const { data } = await supabase.auth.getSession()
-      const user = data.session?.user
+      const session =
+        raced.session ??
+        (await Promise.race([
+          supabase.auth.getSession().then((result) => result.data.session ?? null),
+          sleep(AUTH_SESSION_WAIT_MS).then(() => null),
+        ]))
+      const user = session?.user
       if (!active || timedOut.current) return
       if (!user?.id) {
+        if (hasStoredAuthSession()) {
+          await replaceAfterHold(destinationAfterSignIn("user", readLastRoute()))
+          return
+        }
         await replaceAfterHold("/login")
         return
       }
 
-      const role = await fetchProfileRole(supabase, user.id)
+      const role = await Promise.race([
+        fetchProfileRole(supabase, user.id),
+        sleep(300).then(() => null),
+      ])
       if (!active || timedOut.current) return
-      if (await signOutIfPrivilegedGoogle(supabase, user, role)) {
-        if (role === "staff" || role === "admin") {
+      if (role === "staff" || role === "admin") {
+        const blocked = await Promise.race([
+          signOutIfPrivilegedGoogle(supabase, user, role),
+          sleep(300).then(() => false),
+        ])
+        if (blocked) {
           const message = encodeURIComponent(privilegedGoogleBlockMessage(role))
           await replaceAfterHold(`${privilegedGoogleLoginPath(role)}?auth_error=${message}`)
           return
@@ -152,8 +202,9 @@ export function AuthSplashOverlay() {
     return () => {
       active = false
       window.clearTimeout(slowTimer)
+      window.clearTimeout(watchdog)
     }
-  }, [attempt, onCallback, t.signInLinkExpired])
+  }, [attempt, onCallback])
 
   if (!visible) return null
 

@@ -72,6 +72,7 @@ export function screenFromPath(pathname: string): string {
   if (path.startsWith("/location/")) {
     return "location-detail"
   }
+  if (path === "/auth/callback") return "auth-callback"
   return PATH_TO_SCREEN[path] ?? PATH_TO_SCREEN[pathname] ?? "splash"
 }
 
