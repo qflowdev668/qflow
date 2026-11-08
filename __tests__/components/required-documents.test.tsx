@@ -53,7 +53,17 @@ describe("required documents", () => {
 
   it("lets an admin save the documents field", async () => {
     const user = userEvent.setup()
-    appState.currentUser = admin
+    Object.assign(
+      appState,
+      createAppMock({
+        currentUser: admin,
+        editingLocation: sampleLocation,
+        updateLocation: jest.fn(),
+        addLocation: jest.fn(),
+        setEditingLocation: jest.fn(),
+        navigateTo: jest.fn(),
+      })
+    )
     render(<AddLocationScreen />)
 
     const field = screen.getByLabelText("Documents required")
@@ -78,17 +88,45 @@ describe("required documents", () => {
   })
 
   it("shows the list to a customer when it is set", () => {
-    appState.selectedLocation = {
-      ...sampleLocation,
-      requiredDocuments: "Green ID book",
-    }
+    Object.assign(
+      appState,
+      createAppMock({
+        currentUser: {
+          id: "user-1",
+          name: "Customer",
+          email: "customer@example.com",
+          role: "user" as const,
+        },
+        selectedLocation: {
+          ...sampleLocation,
+          requiredDocuments: "Green ID book",
+        },
+        setSelectedLocation: jest.fn(),
+        leaveQueue: jest.fn(),
+        navigateTo: jest.fn(),
+      })
+    )
     render(<LocationDetailScreen />)
     expect(screen.getByTestId("bring-with-you")).toHaveTextContent("Bring with you")
     expect(screen.getByTestId("bring-with-you")).toHaveTextContent("Green ID book")
   })
 
   it("hides the section when the list is empty", () => {
-    appState.selectedLocation = { ...sampleLocation, requiredDocuments: "   " }
+    Object.assign(
+      appState,
+      createAppMock({
+        currentUser: {
+          id: "user-1",
+          name: "Customer",
+          email: "customer@example.com",
+          role: "user" as const,
+        },
+        selectedLocation: { ...sampleLocation, requiredDocuments: "   " },
+        setSelectedLocation: jest.fn(),
+        leaveQueue: jest.fn(),
+        navigateTo: jest.fn(),
+      })
+    )
     render(<LocationDetailScreen />)
     expect(screen.queryByTestId("bring-with-you")).not.toBeInTheDocument()
     expect(screen.queryByText("Bring with you")).not.toBeInTheDocument()
