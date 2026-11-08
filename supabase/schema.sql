@@ -34,6 +34,11 @@ create table public.locations (
   capacity integer not null default 50,
   is_open boolean not null default true,
   description text,
+  -- Admin-written list of what to bring. Shown to customers as written, not translated.
+  required_documents text,
+  constraint locations_required_documents_len check (
+    required_documents is null or char_length(required_documents) <= 1000
+  ),
   -- Denormalised so anyone can see how busy a location is without being able to
   -- read other people's queue_entries rows (which RLS hides).
   queue_count integer not null default 0,
@@ -589,6 +594,34 @@ create policy "Admins can update locations"
 create policy "Admins can delete locations"
   on public.locations for delete
   using (public.current_user_role() = 'admin');
+
+create or replace function public.guard_location_required_documents()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'UPDATE' and new.required_documents is not distinct from old.required_documents then
+    return new;
+  end if;
+  if coalesce(auth.role(), '') = 'service_role' then
+    return new;
+  end if;
+  if public.current_user_role() = 'admin' then
+    return new;
+  end if;
+  raise exception 'Only an admin can change documents required'
+    using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists locations_guard_required_documents on public.locations;
+
+create trigger locations_guard_required_documents
+  before insert or update on public.locations
+  for each row
+  execute function public.guard_location_required_documents();
 
 -- Queue entries
 create policy "Users can view own queue entries"

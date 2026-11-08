@@ -406,6 +406,9 @@ export type TranslationKeys = {
   capacityPlaceholder: string
   descriptionOptional: string
   descriptionPlaceholder: string
+  documentsRequired: string
+  documentsCharCount: string
+  documentsShownAsWritten: string
   coordinatesLabel: string
   latitude: string
   longitude: string
@@ -517,6 +520,7 @@ export type TranslationKeys = {
   minUnit: string
   noThanks: string
   about: string
+  bringWithYou: string
   statusLabel: string
   unknown: string
   locationTitle: string

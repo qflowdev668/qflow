@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -73,12 +74,14 @@ class QueueFacts:
         people_ahead: int | None,
         status: str,
         priority: str,
+        location_id: str = "",
     ) -> None:
         self.location_name = location_name
         self.position = position
         self.people_ahead = people_ahead
         self.status = status
         self.priority = priority
+        self.location_id = location_id
 
 
 def redact_pii(text: str) -> str:
@@ -237,6 +240,7 @@ async def gather_facts(user: dict[str, Any]) -> tuple[str, QueueFacts | None]:
                 people_ahead=people_ahead,
                 status=str(row.get("status") or ""),
                 priority=str(row.get("priority") or ""),
+                location_id=str(location_id or ""),
             )
     except Exception:
         logger.exception("Ask QFlow could not load the active queue")
@@ -377,6 +381,191 @@ async def chat(
         reply = fallback_reply()
 
     await _log_exchange(str(user.get("id") or ""), safe_message, reply)
+    payload = {"reply": reply}
+    if answered:
+        payload["model"] = llama_model()
+    return payload
+
+
+CHIP_QUESTIONS = {
+    "documents": "What documents do I need?",
+    "wait": "How long is the wait?",
+    "arrive": "Where do I go when I arrive?",
+}
+EMPTY_DOCUMENTS_REPLY = (
+    "This location hasn't published a list yet. Please ask staff when you arrive."
+)
+EMERGENCY_REPLY = "Call 10177 or 112 now."
+OFF_TOPIC_REPLY = (
+    "I can only help with this queue and the documents this location has published."
+)
+ENGLISH_ONLY_REPLY = "AI answers are English-only for now"
+CHIP_CACHE_SECONDS = 120
+_LOCATION_ID = re.compile(r"^[0-9a-zA-Z-]{1,80}$")
+_EMERGENCY = re.compile(
+    r"\b(?:emergency|emergencies|ambulance|unconscious|chest pain|heart attack|"
+    r"stroke|can't breathe|cannot breathe|cant breathe|bleeding|10177)\b|\b112\b",
+    re.IGNORECASE,
+)
+_chip_cache: dict[str, tuple[float, str]] = {}
+
+
+class ChipBody(BaseModel):
+    chip: str = ""
+    message: str = ""
+    language: str = "en"
+    location_id: str | None = Field(default=None, max_length=80)
+    conversation_id: str | None = Field(default=None, max_length=80)
+
+
+def reset_chip_cache() -> None:
+    """Test helper — drop cached chip answers."""
+    _chip_cache.clear()
+
+
+def _clean_location_id(raw: str | None) -> str:
+    value = (raw or "").strip()
+    if not value or not _LOCATION_ID.fullmatch(value):
+        return ""
+    return value
+
+
+def _is_emergency(text: str) -> bool:
+    return bool(_EMERGENCY.search(text or ""))
+
+
+def _chip_cache_get(key: str) -> str | None:
+    hit = _chip_cache.get(key)
+    if not hit:
+        return None
+    stored_at, reply = hit
+    if time.monotonic() - stored_at > CHIP_CACHE_SECONDS:
+        _chip_cache.pop(key, None)
+        return None
+    return reply
+
+
+def _chip_cache_key(
+    location_id: str,
+    chip: str,
+    documents: str,
+    queue: QueueFacts | None,
+) -> str:
+    if queue is None:
+        return f"{location_id}|{chip}|{documents}|none"
+    ahead = queue.people_ahead
+    wait = "" if ahead is None else str(estimate_wait(ahead))
+    return "|".join(
+        [
+            location_id,
+            chip,
+            documents,
+            str(queue.position),
+            str(ahead),
+            queue.status,
+            wait,
+        ]
+    )
+
+
+async def _published_documents(location_id: str) -> str:
+    if not location_id:
+        return ""
+    row = await rest_get_one(
+        "locations",
+        {"id": f"eq.{location_id}", "select": "name,required_documents"},
+    )
+    if not row:
+        return ""
+    return str(row.get("required_documents") or "").strip()
+
+
+def build_chip_prompt(name: str, documents: str, queue: QueueFacts | None) -> str:
+    """Facts the chip model may use. No email, phone, or other customers."""
+    published = documents.strip() or "not published"
+    if queue is None:
+        facts = (
+            f"First name: {name or 'there'}. "
+            "LIVE QUEUE: none. Position, people ahead, estimated wait, and ticket status "
+            "are not available. Do not invent them."
+        )
+    else:
+        ahead = queue.people_ahead
+        wait = "not listed" if ahead is None else str(estimate_wait(ahead))
+        position = "not listed" if queue.position is None else str(queue.position)
+        people = "not listed" if ahead is None else str(ahead)
+        facts = (
+            f"First name: {name or 'there'}. "
+            f"Ticket status: {_status_label(queue.status)}. "
+            f"Position: {position}. "
+            f"People ahead: {people}. "
+            f"Estimated wait minutes: {wait}."
+        )
+    return (
+        "You are Ask QFlow. Answer in English using only PUBLISHED DOCUMENTS and LIVE QUEUE "
+        "below. If a fact is missing, say so. Never guess a document list, an address, or a wait time.\n"
+        "Safety:\n"
+        "- Do not give medical advice or triage.\n"
+        "- If this is an emergency, reply exactly: Call 10177 or 112 now.\n"
+        "- If the question is not about this queue or the published documents, refuse.\n"
+        f"PUBLISHED DOCUMENTS: {published}\n"
+        f"{facts}"
+    )
+
+
+@router.post("/api/assistant/chip")
+async def chip(
+    body: ChipBody,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, str]:
+    """Suggested questions. English only, grounded in documents and this person's line."""
+    language = (body.language or "en").strip().lower()
+    if language != "en":
+        return {"reply": ENGLISH_ONLY_REPLY}
+
+    chip_id = (body.chip or "").strip().lower()
+    question = CHIP_QUESTIONS.get(chip_id, "")
+    free_text = redact_pii((body.message or "").strip())[:MAX_MESSAGE_CHARS]
+    if _is_emergency(free_text) or _is_emergency(question):
+        await enforce_assistant_rate_limit(str(user.get("id") or ""))
+        await _log_exchange(str(user.get("id") or ""), free_text or question, EMERGENCY_REPLY)
+        return {"reply": EMERGENCY_REPLY}
+
+    if not question:
+        if not free_text:
+            raise HTTPException(status_code=400, detail="Type a question first.")
+        await enforce_assistant_rate_limit(str(user.get("id") or ""))
+        await _log_exchange(str(user.get("id") or ""), free_text, OFF_TOPIC_REPLY)
+        return {"reply": OFF_TOPIC_REPLY}
+
+    await enforce_assistant_rate_limit(str(user.get("id") or ""))
+    name, queue = await gather_facts(user)
+    requested = _clean_location_id(body.location_id)
+    if requested and queue is not None and queue.location_id != requested:
+        queue = None
+    location_id = requested or (queue.location_id if queue is not None else "")
+    documents = await _published_documents(location_id)
+
+    if chip_id == "documents" and not documents:
+        await _log_exchange(str(user.get("id") or ""), question, EMPTY_DOCUMENTS_REPLY)
+        return {"reply": EMPTY_DOCUMENTS_REPLY}
+
+    cache_key = _chip_cache_key(location_id, chip_id, documents, queue)
+    cached = _chip_cache_get(cache_key)
+    if cached:
+        return {"reply": cached, "model": llama_model()}
+
+    answered = False
+    try:
+        system = build_chip_prompt(name, documents, queue)
+        reply = await call_llama(system, [], question)
+        _chip_cache[cache_key] = (time.monotonic(), reply)
+        answered = True
+    except Exception:
+        logger.exception("Ask QFlow chip failed while calling Cloudflare Workers AI")
+        reply = fallback_reply()
+
+    await _log_exchange(str(user.get("id") or ""), question, reply)
     payload = {"reply": reply}
     if answered:
         payload["model"] = llama_model()

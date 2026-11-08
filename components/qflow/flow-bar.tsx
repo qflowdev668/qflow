@@ -514,6 +514,7 @@ export function FlowBar() {
                 <AskQflowAssistant
                   compact
                   placeName={activeQueue.locationName}
+                  locationId={activeQueue.locationId}
                   className="mb-0"
                 />
               </div>

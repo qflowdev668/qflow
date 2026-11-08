@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils"
 import { fmt, useT } from "@/hooks/use-t"
 
 export function AddLocationScreen() {
-  const { addLocation, updateLocation, navigateTo, editingLocation, setEditingLocation } = useApp()
+  const { addLocation, updateLocation, navigateTo, editingLocation, setEditingLocation, currentUser } = useApp()
+  const isAdmin = currentUser?.role === "admin"
   const t = useT()
   const isEditing = !!editingLocation
 
@@ -26,6 +27,7 @@ export function AddLocationScreen() {
   const [address, setAddress] = useState("")
   const [capacity, setCapacity] = useState("")
   const [description, setDescription] = useState("")
+  const [requiredDocuments, setRequiredDocuments] = useState("")
   const [showTypeDropdown, setShowTypeDropdown] = useState(false)
   const [lat, setLat] = useState("")
   const [lng, setLng] = useState("")
@@ -37,6 +39,7 @@ export function AddLocationScreen() {
       setAddress(editingLocation.address)
       setCapacity(editingLocation.capacity.toString())
       setDescription(editingLocation.description || "")
+      setRequiredDocuments(editingLocation.requiredDocuments?.trim() || "")
       setLat(editingLocation.coordinates.lat.toString())
       setLng(editingLocation.coordinates.lng.toString())
     }
@@ -55,7 +58,10 @@ export function AddLocationScreen() {
       distance: "—",
       queueCount: editingLocation?.queueCount || 0,
       waitTime: editingLocation?.waitTime || 0,
-      isOpen: editingLocation?.isOpen ?? true
+      isOpen: editingLocation?.isOpen ?? true,
+      ...(isAdmin
+        ? { requiredDocuments: requiredDocuments.trim().slice(0, 1000) || null }
+        : {}),
     }
 
     if (isEditing && editingLocation) {
@@ -178,6 +184,25 @@ export function AddLocationScreen() {
             className="w-full min-h-[100px] px-4 py-3 bg-background border border-input rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+
+        {isAdmin && (
+          <div>
+            <label htmlFor="required-documents" className="block text-sm font-medium text-foreground mb-2">
+              {t.documentsRequired}
+            </label>
+            <textarea
+              id="required-documents"
+              value={requiredDocuments}
+              maxLength={1000}
+              onChange={(e) => setRequiredDocuments(e.target.value.slice(0, 1000))}
+              className="w-full min-h-[100px] px-4 py-3 bg-background border border-input rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="mt-2 text-sm text-muted-foreground" data-testid="documents-char-count" aria-live="polite">
+              {fmt(t.documentsCharCount, { count: requiredDocuments.length })}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{t.documentsShownAsWritten}</p>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">

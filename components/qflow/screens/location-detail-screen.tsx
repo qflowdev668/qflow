@@ -329,6 +329,15 @@ export function LocationDetailScreen() {
           </div>
         )}
 
+        {location.requiredDocuments?.trim() && (
+          <div className="bg-card rounded-xl border border-border p-4 mb-6" data-testid="bring-with-you">
+            <h3 className="font-semibold text-foreground mb-2">{t.bringWithYou}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+              {location.requiredDocuments.trim()}
+            </p>
+          </div>
+        )}
+
         {/* About */}
         {location.description && (
           <div className="bg-card rounded-xl border border-border p-4 mb-6">

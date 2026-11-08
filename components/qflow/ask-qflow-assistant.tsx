@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { apiFetch, formatApiErrorMessage } from "@/lib/api-client"
 import { useT } from "@/hooks/use-t"
+import { useApp } from "@/lib/app-context"
 import { cn } from "@/lib/utils"
 import { Send, Sparkles } from "lucide-react"
 
@@ -10,19 +11,24 @@ type ChatMessage = {
   id: string
   role: "user" | "assistant"
   text: string
+  labeled?: boolean
 }
 
-const STARTERS = [
-  "How long is my wait?",
-  "What is Fast Track?",
-  "How do I get directions?",
-]
+const CHIPS = [
+  { id: "documents", label: "What documents do I need?" },
+  { id: "wait", label: "How long is the wait?" },
+  { id: "arrive", label: "Where do I go when I arrive?" },
+] as const
+
+const ENGLISH_ONLY = "AI answers are English-only for now"
 
 const FALLBACK_ERROR = "Couldn't get an answer. Please try again."
 
 type AskQflowAssistantProps = {
   /** Place the person is looking at, so answers can name that drawer. */
   placeName?: string
+  /** Location whose published documents and live line the chips may use. */
+  locationId?: string
   /** Icon and label only, for sheets that should stay open and quiet. */
   compact?: boolean
   className?: string
@@ -30,10 +36,13 @@ type AskQflowAssistantProps = {
 
 export function AskQflowAssistant({
   placeName,
+  locationId,
   compact = false,
   className,
 }: AskQflowAssistantProps = {}) {
   const t = useT()
+  const { language } = useApp()
+  const answersInEnglish = (language ?? "en") === "en"
   const inputId = useId()
   const conversationId = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -122,6 +131,44 @@ export function AskQflowAssistant({
     }
   }
 
+  const askChip = async (chipId: (typeof CHIPS)[number]["id"], label: string) => {
+    if (loading) return
+    setError(null)
+    if (!answersInEnglish) return
+    setMessages((prev) => [...prev, { id: `user-${prev.length}`, role: "user", text: label }])
+    setLoading(true)
+    try {
+      const response = await apiFetch("/api/assistant/chip", {
+        method: "POST",
+        body: JSON.stringify({
+          chip: chipId,
+          language: "en",
+          conversation_id: conversationId.current,
+          ...(locationId ? { location_id: locationId } : {}),
+        }),
+      })
+      const payload: unknown = await response.json().catch(() => null)
+      const reply = response.ok
+        ? payload && typeof payload === "object" && "reply" in payload
+          ? String((payload as { reply?: unknown }).reply ?? "").trim()
+          : ""
+        : formatApiErrorMessage(payload, FALLBACK_ERROR)
+      const safeReply =
+        !reply || /traceback|typeerror|stack trace/i.test(reply) ? FALLBACK_ERROR : reply
+      setMessages((prev) => [
+        ...prev,
+        { id: `assistant-${prev.length}`, role: "assistant", text: safeReply, labeled: true },
+      ])
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { id: `assistant-${prev.length}`, role: "assistant", text: FALLBACK_ERROR, labeled: true },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <section className={cn("mb-8", className)} aria-label="Ask QFlow">
       <button
@@ -185,19 +232,24 @@ export function AskQflowAssistant({
             aria-relevant="additions"
             className="mb-3 flex max-h-72 flex-col gap-2 overflow-y-auto"
           >
-            {messages.length === 0 && !loading && (
+            {(messages.length === 0 || !answersInEnglish) && !loading && (
               <div className="flex flex-col gap-2">
                 <p className="text-sm text-muted-foreground">Try one of these:</p>
+                {!answersInEnglish && (
+                  <p data-testid="ask-qflow-english-only" className="text-sm text-foreground">
+                    {ENGLISH_ONLY}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
-                  {STARTERS.map((question) => (
+                  {CHIPS.map((chip) => (
                     <button
-                      key={question}
+                      key={chip.id}
                       type="button"
                       data-testid="ask-qflow-chip"
                       className="rounded-full border border-border bg-background px-3 py-2 text-left text-sm font-medium text-foreground"
-                      onClick={() => void send(question)}
+                      onClick={() => void askChip(chip.id, chip.label)}
                     >
-                      {question}
+                      {chip.label}
                     </button>
                   ))}
                 </div>
@@ -215,6 +267,11 @@ export function AskQflowAssistant({
                     : "mr-auto bg-muted text-foreground"
                 )}
               >
+                {message.labeled && (
+                  <span data-testid="ask-qflow-ai-label" className="mb-1 block text-xs font-semibold">
+                    AI answer
+                  </span>
+                )}
                 {message.text}
               </p>
             ))}
